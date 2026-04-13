@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Film Canvas</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0a0f;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    color: #e0e0e0;
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+    cursor: crosshair;
+    user-select: none;
+  }
+
+  /* ── API Key Screen ── */
+  #api-screen {
+    position: fixed; inset: 0; z-index: 9999;
+    background: #0a0a0f;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #api-screen.hidden { display: none; }
+
+  .api-box {
+    background: #111118;
+    border: 1px solid #1e1e2a;
+    border-radius: 20px;
+    padding: 52px 44px;
+    max-width: 480px; width: 90%;
+    box-shadow: 0 0 120px rgba(100, 60, 255, 0.05);
+  }
+  .api-box h1 {
+    font-size: 32px; font-weight: 200;
+    letter-spacing: 4px; text-transform: uppercase;
+    color: #fff;
+    margin-bottom: 8px;
+  }
+  .api-box .subtitle {
+    color: #444; font-size: 13px; font-weight: 300;
+    letter-spacing: 0.5px; margin-bottom: 28px;
+  }
+  .api-box p { color: #666; font-size: 14px; line-height: 1.7; }
+  .api-box ol { color: #555; font-size: 13px; line-height: 2; padding-left: 20px; margin: 16px 0 24px; }
+  .api-box a { color: #7b6ff0; text-decoration: none; }
+  .api-box a:hover { text-decoration: underline; }
+  .api-box strong { color: #999; font-weight: 500; }
+
+  #api-input {
+    width: 100%; padding: 16px 18px;
+    background: #0e0e18; border: 1px solid #222;
+    border-radius: 12px; color: #fff; font-size: 14px;
+    outline: none; font-family: inherit; letter-spacing: 0.3px;
+    transition: border-color 0.2s;
+  }
+  #api-input:focus { border-color: #7b6ff0; }
+  #api-input::placeholder { color: #333; }
+
+  #api-btn {
+    width: 100%; padding: 16px; margin-top: 16px;
+    background: #1a1a2a; border: none; border-radius: 12px;
+    color: #555; font-size: 15px; font-weight: 400;
+    cursor: default; font-family: inherit;
+    letter-spacing: 0.5px; transition: all 0.3s;
+  }
+  #api-btn.active {
+    background: linear-gradient(135deg, #7b6ff0, #5a4fd4);
+    color: #fff; cursor: pointer;
+  }
+  #api-btn.active:hover { transform: translateY(-1px); box-shadow: 0 8px 30px rgba(123,111,240,0.3); }
+
+  /* ── Canvas ── */
+  #canvas-root {
+    position: fixed; inset: 0;
+    background: radial-gradient(ellipse at 50% 30%, #111122 0%, #0a0a0f 70%);
+  }
+
+  #dot-grid {
+    position: fixed; inset: 0; pointer-events: none; opacity: 0.025;
+    background-image: radial-gradient(circle, #fff 1px, transparent 1px);
+    background-size: 30px 30px;
+  }
+
+  #watermark {
+    position: fixed; top: 24px; left: 32px; z-index: 5;
+    color: rgba(255,255,255,0.03); font-size: 56px; font-weight: 200;
+    letter-spacing: 8px; text-transform: uppercase; pointer-events: none;
+  }
+
+  #zoom-indicator {
+    position: fixed; top: 28px; right: 32px; z-index: 5;
+    color: #2a2a2a; font-size: 12px; font-family: 'SF Mono', monospace;
+    pointer-events: none;
+  }
+
+  #card-count {
+    position: fixed; bottom: 32px; right: 32px; z-index: 5;
+    color: #2a2a2a; font-size: 12px; font-family: 'SF Mono', monospace;
+    pointer-events: none;
+  }
+
+  #canvas-layer {
+    position: absolute;
+    transform-origin: 0 0;
+  }
+
+  /* ── Empty State ── */
+  #empty-state {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 10px; pointer-events: none;
+  }
+  #empty-state.hidden { display: none; }
+  #empty-state .main { color: #222; font-size: 18px; font-weight: 300; letter-spacing: 1px; }
+  #empty-state .sub { color: #1a1a1a; font-size: 13px; font-weight: 300; }
+
+  /* ── Hints ── */
+  #hints {
+    position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%);
+    z-index: 50; background: rgba(14,14,22,0.92); backdrop-filter: blur(16px);
+    border: 1px solid #1a1a2a; border-radius: 14px;
+    padding: 14px 32px; display: flex; gap: 28;
+    color: #555; font-size: 12px; letter-spacing: 0.3px; white-space: nowrap;
+    transition: opacity 0.6s;
+  }
+  #hints.hidden { opacity: 0; pointer-events: none; }
+  #hints strong { color: #888; font-weight: 500; }
+
+  /* ── Movie Card ── */
+  .movie-card {
+    position: absolute; width: 160px; cursor: grab;
+    transition: filter 0.3s;
+  }
+  .movie-card:active { cursor: grabbing; }
+  .movie-card.dragging { z-index: 10000 !important; }
+
+  .card-poster {
+    width: 160px; height: 240px; border-radius: 12px; overflow: hidden;
+    position: relative;
+    box-shadow: 0 8px 36px rgba(0,0,0,0.6);
+    border: 1px solid rgba(255,255,255,0.04);
+    transition: box-shadow 0.3s, transform 0.3s;
+  }
+  .movie-card:hover .card-poster {
+    box-shadow: 0 14px 48px rgba(0,0,0,0.7), 0 0 24px rgba(123,111,240,0.12);
+    transform: scale(1.02);
+  }
+  .movie-card.dragging .card-poster {
+    box-shadow: 0 24px 64px rgba(0,0,0,0.8), 0 0 40px rgba(123,111,240,0.25);
+    transform: scale(1.06);
+    transition: none;
+  }
+
+  .card-poster img {
+    width: 100%; height: 100%; object-fit: cover; pointer-events: none;
+    display: block;
+  }
+
+  .card-placeholder {
+    width: 100%; height: 100%;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 16px;
+  }
+  .card-placeholder .initials {
+    font-size: 44px; font-weight: 200;
+    color: rgba(255,255,255,0.1); letter-spacing: 6px;
+  }
+  .card-placeholder .ph-title {
+    font-size: 11px; color: rgba(255,255,255,0.15);
+    margin-top: 10px; text-align: center; line-height: 1.4; font-weight: 300;
+  }
+
+  .card-info {
+    padding: 10px 4px 0; text-align: center;
+  }
+  .card-title {
+    color: #d0d0d0; font-size: 13px; font-weight: 500;
+    line-height: 1.3; letter-spacing: 0.2px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .card-year {
+    color: #444; font-size: 11px; margin-top: 4px; font-weight: 300;
+  }
+  .card-rating {
+    color: #f5c518; font-size: 11px; margin-top: 2px;
+  }
+
+  /* Remove button on hover */
+  .card-remove {
+    position: absolute; top: 6px; right: 6px;
+    width: 24px; height: 24px; border-radius: 50%;
+    background: rgba(0,0,0,0.7); border: 1px solid rgba(255,255,255,0.1);
+    color: #888; font-size: 14px;
+    display: none; align-items: center; justify-content: center;
+    cursor: pointer; backdrop-filter: blur(4px);
+    transition: all 0.15s; z-index: 2; line-height: 1;
+  }
+  .movie-card:hover .card-remove { display: flex; }
+  .card-remove:hover { background: rgba(220,50,50,0.8); color: #fff; border-color: transparent; }
+
+  /* ── Search Popup ── */
+  .search-popup {
+    position: absolute; z-index: 8000; width: 320px;
+  }
+
+  .search-box {
+    background: #111118; border: 1px solid #222;
+    border-radius: 14px; overflow: hidden;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.8), 0 0 60px rgba(123,111,240,0.04);
+  }
+
+  .search-input {
+    width: 100%; padding: 16px 20px;
+    background: transparent; border: none;
+    color: #fff; font-size: 16px; font-weight: 300;
+    outline: none; font-family: inherit; letter-spacing: 0.3px;
+  }
+  .search-input::placeholder { color: #333; }
+
+  .search-divider { height: 1px; background: #1a1a2a; margin: 0 16px; }
+
+  .search-results { max-height: 380px; overflow-y: auto; }
+  .search-results::-webkit-scrollbar { width: 4px; }
+  .search-results::-webkit-scrollbar-thumb { background: #222; border-radius: 4px; }
+
+  .search-result {
+    display: flex; align-items: center; gap: 14px;
+    padding: 12px 18px; cursor: pointer;
+    border-bottom: 1px solid #141420;
+    transition: background 0.15s;
+  }
+  .search-result:hover { background: #161625; }
+  .search-result:last-child { border-bottom: none; }
+
+  .result-thumb {
+    width: 44px; height: 64px; border-radius: 8px; overflow: hidden;
+    flex-shrink: 0; background: #0a0a12;
+  }
+  .result-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .result-thumb .no-img {
+    width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    color: #2a2a2a; font-size: 10px;
+  }
+
+  .result-info { flex: 1; min-width: 0; }
+  .result-title {
+    color: #d0d0d0; font-size: 14px; font-weight: 500;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .result-meta { color: #444; font-size: 12px; margin-top: 3px; }
+  .result-meta .star { color: #f5c518; margin-left: 8px; }
+  .result-overview {
+    color: #333; font-size: 11px; margin-top: 4px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; line-height: 1.4;
+  }
+
+  .search-loading, .search-error {
+    padding: 20px; text-align: center; font-size: 13px; color: #333;
+  }
+  .search-error { color: #664444; }
+
+  .search-hint {
+    padding: 10px 18px 14px; color: #2a2a2a; font-size: 11px;
+    letter-spacing: 0.2px;
+  }
+  .search-hint strong { color: #444; }
+</style>
+</head>
+<body>
+
+<!-- ══════ API KEY SCREEN ══════ -->
+<div id="api-screen">
+  <div class="api-box">
+    <h1>Film Canvas</h1>
+    <div class="subtitle">Your personal movie collection, on an infinite canvas.</div>
+    <p>This app uses <strong>TMDB</strong> (The Movie Database) to fetch movie posters, ratings, and info — like a search engine.</p>
+    <ol>
+      <li>Go to <a href="https://www.themoviedb.org/signup" target="_blank">themoviedb.org/signup</a> and create a free account</li>
+      <li>Go to <a href="https://www.themoviedb.org/settings/api" target="_blank">Settings → API</a></li>
+      <li>Copy your <strong>API Key (v3 auth)</strong></li>
+      <li>Paste it below</li>
+    </ol>
+    <input type="text" id="api-input" placeholder="Paste your TMDB API key here...">
+    <button id="api-btn">Enter the Canvas</button>
+  </div>
+</div>
+
+<!-- ══════ CANVAS ══════ -->
+<div id="canvas-root" style="display:none;">
+  <div id="dot-grid"></div>
+  <div id="watermark">Film Canvas</div>
+  <div id="zoom-indicator">100%</div>
+  <div id="card-count"></div>
+  <div id="empty-state">
+    <div class="main">Double-click anywhere to add your first film</div>
+    <div class="sub">Build your collection on an infinite canvas</div>
+  </div>
+  <div id="canvas-layer"></div>
+  <div id="hints">
+    <span><strong>Double-click</strong> to add film</span>
+    <span><strong>Drag</strong> cards to move</span>
+    <span><strong>Scroll</strong> to zoom</span>
+    <span><strong>Shift+Drag</strong> to pan</span>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ── State ──
+  let apiKey = "";
+  let cards = [];
+  let zoom = 1;
+  let panX = 0, panY = 0;
+  let nextZ = 1;
+
+  // Drag state
+  let dragging = null; // { id, startMx, startMy, startCx, startCy }
+  // Pan state
+  let panning = false;
+  let panStartMx = 0, panStartMy = 0, panStartPx = 0, panStartPy = 0;
+  // Search state
+  let activeSearch = null; // DOM element
+
+  const TMDB = "https://api.themoviedb.org/3";
+  const IMG = "https://image.tmdb.org/t/p";
+
+  // ── DOM refs ──
+  const apiScreen = document.getElementById("api-screen");
+  const apiInput = document.getElementById("api-input");
+  const apiBtn = document.getElementById("api-btn");
+  const canvasRoot = document.getElementById("canvas-root");
+  const canvasLayer = document.getElementById("canvas-layer");
+  const dotGrid = document.getElementById("dot-grid");
+  const zoomIndicator = document.getElementById("zoom-indicator");
+  const cardCount = document.getElementById("card-count");
+  const emptyState = document.getElementById("empty-state");
+  const hints = document.getElementById("hints");
+
+  // ── API Key Setup ──
+  apiInput.addEventListener("input", () => {
+    if (apiInput.value.trim()) {
+      apiBtn.classList.add("active");
+    } else {
+      apiBtn.classList.remove("active");
+    }
+  });
+
+  apiInput.addEventListener("keydown", e => {
+    if (e.key === "Enter" && apiInput.value.trim()) enterCanvas();
+  });
+
+  apiBtn.addEventListener("click", () => {
+    if (apiInput.value.trim()) enterCanvas();
+  });
+
+  function enterCanvas() {
+    apiKey = apiInput.value.trim();
+    apiScreen.classList.add("hidden");
+    canvasRoot.style.display = "block";
+    setTimeout(() => hints.classList.add("hidden"), 8000);
+  }
+
+  // ── Helpers ──
+  function screenToCanvas(sx, sy) {
+    return { x: (sx - panX) / zoom, y: (sy - panY) / zoom };
+  }
+
+  function updateTransform() {
+    canvasLayer.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+    zoomIndicator.textContent = Math.round(zoom * 100) + "%";
+    dotGrid.style.backgroundSize = `${30 * zoom}px ${30 * zoom}px`;
+    dotGrid.style.backgroundPosition = `${panX % (30 * zoom)}px ${panY % (30 * zoom)}px`;
+  }
+
+  function updateCardCount() {
+    if (cards.length > 0) {
+      cardCount.textContent = cards.length + " film" + (cards.length !== 1 ? "s" : "");
+      emptyState.classList.add("hidden");
+    } else {
+      cardCount.textContent = "";
+      emptyState.classList.remove("hidden");
+    }
+  }
+
+  function stringToGradient(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    const h1 = Math.abs(hash % 360);
+    const h2 = (h1 + 40) % 360;
+    return `linear-gradient(135deg, hsl(${h1},35%,16%), hsl(${h2},45%,10%))`;
+  }
+
+  function getInitials(title) {
+    return title.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join("");
+  }
+
+  // ── Create Movie Card DOM ──
+  function createCard(data) {
+    const card = {
+      id: Date.now() + Math.random(),
+      title: data.title,
+      poster: data.poster_path,
+      year: (data.release_date || "").slice(0, 4),
+      rating: data.vote_average || 0,
+      overview: data.overview || "",
+      x: data._cx,
+      y: data._cy,
+      z: nextZ++
+    };
+    cards.push(card);
+
+    const el = document.createElement("div");
+    el.className = "movie-card";
+    el.dataset.cardId = card.id;
+    el.style.left = card.x + "px";
+    el.style.top = card.y + "px";
+    el.style.zIndex = card.z;
+
+    const posterDiv = document.createElement("div");
+    posterDiv.className = "card-poster";
+
+    if (card.poster) {
+      const img = document.createElement("img");
+      img.src = `${IMG}/w300${card.poster}`;
+      img.alt = card.title;
+      img.draggable = false;
+      posterDiv.appendChild(img);
+    } else {
+      const ph = document.createElement("div");
+      ph.className = "card-placeholder";
+      ph.style.background = stringToGradient(card.title);
+      ph.innerHTML = `<div class="initials">${getInitials(card.title)}</div><div class="ph-title">${card.title}</div>`;
+      posterDiv.appendChild(ph);
+    }
+
+    // Remove button
+    const removeBtn = document.createElement("div");
+    removeBtn.className = "card-remove";
+    removeBtn.innerHTML = "×";
+    removeBtn.addEventListener("mousedown", e => e.stopPropagation());
+    removeBtn.addEventListener("click", e => {
+      e.stopPropagation();
+      el.remove();
+      cards = cards.filter(c => c.id !== card.id);
+      updateCardCount();
+    });
+    posterDiv.appendChild(removeBtn);
+
+    el.appendChild(posterDiv);
+
+    // Info
+    const info = document.createElement("div");
+    info.className = "card-info";
+    info.innerHTML = `
+      <div class="card-title">${card.title}</div>
+      ${card.year ? `<div class="card-year">${card.year}</div>` : ""}
+      ${card.rating > 0 ? `<div class="card-rating">★ ${card.rating.toFixed(1)}</div>` : ""}
+    `;
+    el.appendChild(info);
+
+    // Drag
+    el.addEventListener("mousedown", e => {
+      if (e.button !== 0) return;
+      e.stopPropagation();
+      const cp = screenToCanvas(e.clientX, e.clientY);
+      dragging = {
+        id: card.id,
+        el: el,
+        startMx: cp.x, startMy: cp.y,
+        startCx: card.x, startCy: card.y
+      };
+      card.z = nextZ++;
+      el.style.zIndex = card.z;
+      el.classList.add("dragging");
+    });
+
+    canvasLayer.appendChild(el);
+    updateCardCount();
+    return el;
+  }
+
+  // ── Search Popup ──
+  function openSearch(cx, cy) {
+    closeSearch();
+
+    const popup = document.createElement("div");
+    popup.className = "search-popup";
+    popup.style.left = cx + "px";
+    popup.style.top = cy + "px";
+
+    let debounceTimer = null;
+
+    popup.innerHTML = `
+      <div class="search-box">
+        <input class="search-input" placeholder="Search a movie..." autofocus>
+        <div class="search-divider"></div>
+        <div class="search-results"></div>
+        <div class="search-hint">Type a movie name — results appear live</div>
+      </div>
+    `;
+
+    const input = popup.querySelector(".search-input");
+    const resultsDiv = popup.querySelector(".search-results");
+    const hintDiv = popup.querySelector(".search-hint");
+
+    // Stop events from propagating to canvas
+    popup.addEventListener("mousedown", e => e.stopPropagation());
+    popup.addEventListener("dblclick", e => e.stopPropagation());
+
+    input.addEventListener("keydown", e => {
+      if (e.key === "Escape") closeSearch();
+    });
+
+    input.addEventListener("input", () => {
+      clearTimeout(debounceTimer);
+      const q = input.value.trim();
+      if (!q) {
+        resultsDiv.innerHTML = "";
+        hintDiv.style.display = "block";
+        return;
+      }
+      hintDiv.style.display = "none";
+      debounceTimer = setTimeout(() => searchMovies(q, resultsDiv, cx, cy), 350);
+    });
+
+    canvasLayer.appendChild(popup);
+    activeSearch = popup;
+
+    // Focus after a tick (transform can delay focus)
+    setTimeout(() => input.focus(), 60);
+  }
+
+  function closeSearch() {
+    if (activeSearch) {
+      activeSearch.remove();
+      activeSearch = null;
+    }
+  }
+
+  async function searchMovies(query, container, cx, cy) {
+    container.innerHTML = '<div class="search-loading">Searching...</div>';
+
+    try {
+      const res = await fetch(`${TMDB}/search/movie?api_key=${apiKey}&query=${encodeURIComponent(query)}&page=1`);
+      const data = await res.json();
+
+      if (data.status_code) {
+        container.innerHTML = `<div class="search-error">API Error: ${data.status_message || "Check your API key"}</div>`;
+        return;
+      }
+
+      const movies = (data.results || []).slice(0, 8);
+      if (!movies.length) {
+        container.innerHTML = '<div class="search-loading">No results found</div>';
+        return;
+      }
+
+      container.innerHTML = "";
+      movies.forEach(movie => {
+        const row = document.createElement("div");
+        row.className = "search-result";
+
+        const thumbHTML = movie.poster_path
+          ? `<img src="${IMG}/w92${movie.poster_path}" alt="">`
+          : `<div class="no-img">N/A</div>`;
+
+        const year = (movie.release_date || "").slice(0, 4) || "—";
+        const rating = movie.vote_average > 0
+          ? `<span class="star">★ ${movie.vote_average.toFixed(1)}</span>` : "";
+        const overview = movie.overview
+          ? `<div class="result-overview">${movie.overview}</div>` : "";
+
+        row.innerHTML = `
+          <div class="result-thumb">${thumbHTML}</div>
+          <div class="result-info">
+            <div class="result-title">${movie.title}</div>
+            <div class="result-meta">${year}${rating}</div>
+            ${overview}
+          </div>
+        `;
+
+        row.addEventListener("click", () => {
+          movie._cx = cx;
+          movie._cy = cy;
+          createCard(movie);
+          closeSearch();
+        });
+
+        container.appendChild(row);
+      });
+    } catch (err) {
+      container.innerHTML = `<div class="search-error">Network error — check your connection</div>`;
+    }
+  }
+
+  // ── Canvas Events ──
+
+  // Double-click to search
+  canvasRoot.addEventListener("dblclick", e => {
+    if (e.target.closest(".movie-card") || e.target.closest(".search-popup")) return;
+    const pos = screenToCanvas(e.clientX, e.clientY);
+    openSearch(pos.x, pos.y);
+  });
+
+  // Click outside search to close
+  canvasRoot.addEventListener("click", e => {
+    if (activeSearch && !e.target.closest(".search-popup")) {
+      closeSearch();
+    }
+  });
+
+  // Mouse down — pan
+  canvasRoot.addEventListener("mousedown", e => {
+    if (e.target.closest(".search-popup") || e.target.closest(".movie-card")) return;
+    if (e.shiftKey || e.button === 1) {
+      e.preventDefault();
+      panning = true;
+      panStartMx = e.clientX;
+      panStartMy = e.clientY;
+      panStartPx = panX;
+      panStartPy = panY;
+      canvasRoot.style.cursor = "grabbing";
+    }
+  });
+
+  // Mouse move
+  window.addEventListener("mousemove", e => {
+    // Card drag
+    if (dragging) {
+      const cp = screenToCanvas(e.clientX, e.clientY);
+      const card = cards.find(c => c.id === dragging.id);
+      if (card) {
+        card.x = dragging.startCx + (cp.x - dragging.startMx);
+        card.y = dragging.startCy + (cp.y - dragging.startMy);
+        dragging.el.style.left = card.x + "px";
+        dragging.el.style.top = card.y + "px";
+      }
+      return;
+    }
+    // Pan
+    if (panning) {
+      panX = panStartPx + (e.clientX - panStartMx);
+      panY = panStartPy + (e.clientY - panStartMy);
+      updateTransform();
+    }
+  });
+
+  // Mouse up
+  window.addEventListener("mouseup", () => {
+    if (dragging) {
+      dragging.el.classList.remove("dragging");
+      dragging = null;
+    }
+    if (panning) {
+      panning = false;
+      canvasRoot.style.cursor = "crosshair";
+    }
+  });
+
+  // Zoom
+  canvasRoot.addEventListener("wheel", e => {
+    e.preventDefault();
+    const factor = e.deltaY > 0 ? 0.92 : 1.08;
+    const newZoom = Math.max(0.1, Math.min(5, zoom * factor));
+
+    // Zoom toward cursor
+    const cx = e.clientX;
+    const cy = e.clientY;
+    panX = cx - (cx - panX) * (newZoom / zoom);
+    panY = cy - (cy - panY) * (newZoom / zoom);
+    zoom = newZoom;
+    updateTransform();
+  }, { passive: false });
+
+  // Prevent middle-click default
+  canvasRoot.addEventListener("auxclick", e => { if (e.button === 1) e.preventDefault(); });
+
+  // Init
+  updateTransform();
+  updateCardCount();
+})();
+</script>
+</body>
+</html>

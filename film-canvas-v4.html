@@ -1,0 +1,1782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Film Canvas v4</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #07070d;
+    font-family: 'Inter', system-ui, sans-serif;
+    color: #e0e0e0;
+    overflow: hidden;
+    height: 100vh; width: 100vw;
+    cursor: crosshair;
+    user-select: none;
+  }
+
+  /* == API KEY SCREEN == */
+  #api-screen {
+    position: fixed; inset: 0; z-index: 9999;
+    background: #07070d;
+    display: flex; align-items: center; justify-content: center;
+    animation: fadeIn 0.6s ease;
+  }
+  #api-screen.hidden { display: none; }
+
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes scaleIn { from { opacity: 0; transform: scale(0.85); } to { opacity: 1; transform: scale(1); } }
+
+  .api-box {
+    background: #0c0c14;
+    border: 1px solid #161625;
+    border-radius: 24px;
+    padding: 56px 48px;
+    max-width: 500px; width: 90%;
+    box-shadow: 0 0 160px rgba(100, 60, 255, 0.04);
+    animation: slideUp 0.5s ease;
+  }
+  .api-box h1 {
+    font-size: 36px; font-weight: 200;
+    letter-spacing: 6px; text-transform: uppercase;
+    color: #fff; margin-bottom: 6px;
+  }
+  .api-box .version {
+    font-size: 11px; color: #7b6ff0; letter-spacing: 3px;
+    text-transform: uppercase; font-weight: 400; margin-bottom: 28px;
+  }
+  .api-box p { color: #555; font-size: 14px; line-height: 1.7; }
+  .api-box ol { color: #444; font-size: 13px; line-height: 2.1; padding-left: 20px; margin: 16px 0 28px; }
+  .api-box a { color: #7b6ff0; text-decoration: none; transition: color 0.2s; }
+  .api-box a:hover { color: #9b8fff; }
+  .api-box strong { color: #888; font-weight: 500; }
+
+  #api-input {
+    width: 100%; padding: 16px 18px;
+    background: #08080f; border: 1px solid #1a1a28;
+    border-radius: 12px; color: #fff; font-size: 14px;
+    outline: none; font-family: inherit; letter-spacing: 0.3px;
+    transition: border-color 0.3s, box-shadow 0.3s;
+  }
+  #api-input:focus { border-color: #7b6ff0; box-shadow: 0 0 20px rgba(123,111,240,0.1); }
+  #api-input::placeholder { color: #2a2a2a; }
+
+  #api-btn {
+    width: 100%; padding: 16px; margin-top: 16px;
+    background: #111; border: none; border-radius: 12px;
+    color: #444; font-size: 15px; font-weight: 400;
+    cursor: default; font-family: inherit;
+    letter-spacing: 0.5px; transition: all 0.4s;
+  }
+  #api-btn.active {
+    background: linear-gradient(135deg, #7b6ff0, #5a4fd4);
+    color: #fff; cursor: pointer;
+  }
+  #api-btn.active:hover { transform: translateY(-2px); box-shadow: 0 10px 40px rgba(123,111,240,0.3); }
+
+  /* == CANVAS == */
+  #canvas-root {
+    position: fixed; inset: 0;
+    background: radial-gradient(ellipse at 50% 30%, #0d0d1a 0%, #07070d 70%);
+  }
+
+  #dot-grid {
+    position: fixed; inset: 0; pointer-events: none; opacity: 0.02;
+    background-image: radial-gradient(circle, #fff 1px, transparent 1px);
+    background-size: 30px 30px;
+  }
+
+  #ambient-glow {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(circle at 30% 40%, rgba(123,111,240,0.015) 0%, transparent 50%),
+                radial-gradient(circle at 70% 60%, rgba(0,180,220,0.01) 0%, transparent 50%);
+  }
+
+  #watermark {
+    position: fixed; top: 24px; left: 32px; z-index: 5;
+    color: rgba(255,255,255,0.025); font-size: 52px; font-weight: 200;
+    letter-spacing: 8px; text-transform: uppercase; pointer-events: none;
+  }
+
+  #zoom-indicator {
+    position: fixed; top: 28px; right: 32px; z-index: 5;
+    color: #1e1e1e; font-size: 12px; font-family: 'SF Mono', 'Fira Code', monospace;
+    pointer-events: none;
+  }
+
+  #card-count {
+    position: fixed; bottom: 32px; right: 80px; z-index: 5;
+    color: #1e1e1e; font-size: 12px; font-family: 'SF Mono', 'Fira Code', monospace;
+    pointer-events: none;
+  }
+
+  #canvas-layer { position: absolute; transform-origin: 0 0; overflow: visible; }
+
+  /* == SVG CONNECTIONS LAYER == */
+  #connections-svg {
+    position: absolute;
+    top: 0; left: 0;
+    width: 1px; height: 1px;
+    pointer-events: none;
+    overflow: visible;
+    z-index: 0;
+  }
+
+  .conn-line {
+    fill: none; stroke: rgba(255,255,255,0.45); stroke-width: 1.5;
+  }
+
+  .conn-label {
+    font-family: 'Inter', sans-serif; font-size: 9px;
+    fill: #555; text-anchor: middle; pointer-events: none;
+    opacity: 0; transition: opacity 0.3s;
+  }
+
+  /* == EMPTY STATE == */
+  #empty-state {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 12px; pointer-events: none;
+  }
+  #empty-state.hidden { display: none; }
+  #empty-state .main { color: #1e1e2a; font-size: 20px; font-weight: 300; letter-spacing: 2px; }
+  #empty-state .sub { color: #141420; font-size: 13px; font-weight: 300; }
+
+  /* == HINTS == */
+  #hints {
+    position: fixed; bottom: 32px; right: 80px;
+    z-index: 50; background: rgba(10,10,18,0.95); backdrop-filter: blur(20px);
+    border: 1px solid #141422; border-radius: 16px;
+    padding: 14px 32px; display: flex; gap: 24px;
+    color: #444; font-size: 12px; letter-spacing: 0.3px; white-space: nowrap;
+    transition: opacity 0.4s, transform 0.4s;
+    opacity: 0; transform: translateY(10px); pointer-events: none;
+  }
+  #hints.visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
+  #hints strong { color: #777; font-weight: 500; }
+
+  /* == HINTS TOGGLE == */
+  #hints-toggle {
+    position: fixed; bottom: 24px; right: 32px; z-index: 61;
+    width: 40px; height: 40px; border-radius: 10px;
+    background: rgba(10,10,18,0.85); backdrop-filter: blur(16px);
+    border: 1px solid #1a1a28;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; transition: all 0.3s;
+    color: #444; font-size: 18px; font-weight: 300;
+  }
+  #hints-toggle:hover { border-color: #333; color: #888; }
+  #hints-toggle.active { border-color: #7b6ff0; color: #7b6ff0; }
+
+  /* == CONNECTION MODE INDICATOR == */
+  #conn-mode {
+    position: fixed; top: 28px; left: 50%; transform: translateX(-50%);
+    z-index: 100; background: rgba(123,111,240,0.12); backdrop-filter: blur(12px);
+    border: 1px solid rgba(123,111,240,0.25); border-radius: 10px;
+    padding: 10px 24px; color: #b0a4ff; font-size: 13px;
+    letter-spacing: 0.4px; display: none;
+    animation: scaleIn 0.2s ease;
+  }
+  #conn-mode.active { display: block; }
+
+  /* == GRAPH NODE (base for all nodes) == */
+  .graph-node {
+    position: absolute; cursor: grab;
+    animation: cardAppear 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    opacity: 0;
+  }
+  @keyframes cardAppear {
+    from { opacity: 0; transform: scale(0.7) translateY(10px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+  .graph-node.placed { animation: none; opacity: 1; }
+  .graph-node:active { cursor: grabbing; }
+  .graph-node.dragging { z-index: 10000 !important; }
+
+  /* == MOVIE CARD == */
+  .movie-card { width: 160px; }
+
+  .card-poster-wrap { transition: box-shadow 0.3s, transform 0.3s; }
+
+  .card-poster {
+    width: 160px; height: 240px; border-radius: 12px; overflow: hidden;
+    position: relative;
+    box-shadow: 0 8px 36px rgba(0,0,0,0.6);
+    border: 1px solid rgba(255,255,255,0.04);
+    transition: box-shadow 0.3s, transform 0.3s;
+  }
+  .movie-card:hover .card-poster {
+    box-shadow: 0 16px 52px rgba(0,0,0,0.7), 0 0 28px rgba(123,111,240,0.1);
+    transform: scale(1.03);
+  }
+  .movie-card.dragging .card-poster {
+    box-shadow: 0 28px 72px rgba(0,0,0,0.85), 0 0 50px rgba(123,111,240,0.2);
+    transform: scale(1.07);
+    transition: none;
+  }
+
+  .movie-card.conn-target .card-poster {
+    box-shadow: 0 0 30px rgba(123,111,240,0.4), 0 8px 36px rgba(0,0,0,0.6);
+  }
+  .movie-card.conn-selected .card-poster {
+    box-shadow: 0 0 40px rgba(123,111,240,0.6), 0 8px 36px rgba(0,0,0,0.6);
+    border-color: rgba(123,111,240,0.4);
+  }
+
+  .card-poster img {
+    width: 100%; height: 100%; object-fit: cover; pointer-events: none; display: block;
+  }
+
+  .card-placeholder {
+    width: 100%; height: 100%;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px;
+  }
+  .card-placeholder .initials {
+    font-size: 44px; font-weight: 200; color: rgba(255,255,255,0.08); letter-spacing: 6px;
+  }
+  .card-placeholder .ph-title {
+    font-size: 11px; color: rgba(255,255,255,0.12);
+    margin-top: 10px; text-align: center; line-height: 1.4; font-weight: 300;
+  }
+
+  .card-info { padding: 10px 4px 0; text-align: center; }
+  .card-title {
+    color: #bbb; font-size: 13px; font-weight: 500;
+    line-height: 1.3; letter-spacing: 0.2px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .card-year { color: #383838; font-size: 11px; margin-top: 4px; font-weight: 300; }
+  .card-rating { color: #f5c518; font-size: 11px; margin-top: 2px; }
+  .card-genres {
+    margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; justify-content: center;
+  }
+  .card-genre-tag {
+    font-size: 9px; color: #444; background: rgba(255,255,255,0.03);
+    border: 1px solid #1a1a2a; border-radius: 6px; padding: 2px 7px;
+    letter-spacing: 0.3px;
+  }
+
+  .card-remove {
+    position: absolute; top: 6px; right: 6px;
+    width: 24px; height: 24px; border-radius: 50%;
+    background: rgba(0,0,0,0.75); border: 1px solid rgba(255,255,255,0.08);
+    color: #666; font-size: 14px;
+    display: none; align-items: center; justify-content: center;
+    cursor: pointer; backdrop-filter: blur(4px);
+    transition: all 0.15s; z-index: 2; line-height: 1;
+  }
+  .movie-card:hover .card-remove { display: flex; }
+  .card-remove:hover { background: rgba(200,40,40,0.85); color: #fff; border-color: transparent; }
+
+  /* == PERSON NODES HIDDEN BY DEFAULT, REVEALED ON MOVIE CLICK == */
+  .director-node, .actor-node {
+    opacity: 0; transform: scale(0); pointer-events: none;
+    transition: opacity 0.4s cubic-bezier(0.34,1.56,0.64,1),
+                transform 0.4s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  .director-node.revealed, .actor-node.revealed {
+    opacity: 1; transform: scale(1); pointer-events: auto;
+  }
+  .director-node.placed, .actor-node.placed {
+    /* let revealed class control visibility instead of placed */
+    animation: none;
+  }
+
+  /* == DOT MODE (zoomed out) == */
+  .graph-node.dot-mode {
+    transition: none;
+  }
+  .graph-node.dot-mode .card-poster-wrap,
+  .graph-node.dot-mode .card-info,
+  .graph-node.dot-mode .person-photo,
+  .graph-node.dot-mode .person-name,
+  .graph-node.dot-mode .person-role {
+    display: none;
+  }
+  .graph-node.dot-mode .node-dot {
+    display: block;
+  }
+  .node-dot {
+    display: none;
+    border-radius: 50%;
+    box-shadow: 0 0 8px currentColor;
+  }
+  .movie-card .node-dot {
+    width: 10px; height: 10px;
+    background: #7b6ff0; color: #7b6ff0;
+  }
+  .director-node .node-dot {
+    width: 8px; height: 8px;
+    background: #9b7aff; color: #9b7aff;
+    border-radius: 50%;
+  }
+  .actor-node .node-dot {
+    width: 7px; height: 7px;
+    background: #ff9f5a; color: #ff9f5a;
+    border-radius: 2px;
+  }
+
+  /* == DIRECTOR NODE (circle) == */
+  .director-node { width: 100px; }
+  .director-node .person-photo {
+    width: 100px; height: 100px;
+    border-radius: 50%;
+    overflow: hidden;
+    border: 2px solid rgba(155, 122, 255, 0.4);
+    box-shadow: 0 0 24px rgba(155, 122, 255, 0.15), 0 8px 28px rgba(0,0,0,0.5);
+    transition: box-shadow 0.3s, transform 0.3s, border-color 0.3s;
+    position: relative;
+  }
+  .director-node:hover .person-photo {
+    box-shadow: 0 0 40px rgba(155, 122, 255, 0.3), 0 12px 40px rgba(0,0,0,0.6);
+    transform: scale(1.06);
+    border-color: rgba(155, 122, 255, 0.7);
+  }
+  .director-node.dragging .person-photo {
+    box-shadow: 0 0 50px rgba(155, 122, 255, 0.4), 0 20px 60px rgba(0,0,0,0.7);
+    transform: scale(1.1);
+    transition: none;
+  }
+  .director-node .person-photo img {
+    width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none;
+  }
+  .director-node .person-photo .person-placeholder {
+    width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, #1a1030, #0d0820);
+    color: rgba(155, 122, 255, 0.3);
+    font-size: 28px; font-weight: 200; letter-spacing: 3px;
+  }
+  .director-node .person-name {
+    text-align: center; margin-top: 8px;
+    color: #9b7aff; font-size: 11px; font-weight: 500;
+    letter-spacing: 0.3px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    width: 100px;
+  }
+  .director-node .person-role {
+    text-align: center; margin-top: 2px;
+    color: #3a3050; font-size: 9px; font-weight: 400;
+    letter-spacing: 1px; text-transform: uppercase;
+  }
+
+  /* == ACTOR NODE (square with rounded corners) == */
+  .actor-node { width: 80px; }
+  .actor-node .person-photo {
+    width: 80px; height: 80px;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 2px solid rgba(255, 159, 90, 0.3);
+    box-shadow: 0 0 20px rgba(255, 159, 90, 0.1), 0 6px 24px rgba(0,0,0,0.5);
+    transition: box-shadow 0.3s, transform 0.3s, border-color 0.3s;
+    position: relative;
+  }
+  .actor-node:hover .person-photo {
+    box-shadow: 0 0 36px rgba(255, 159, 90, 0.25), 0 10px 36px rgba(0,0,0,0.6);
+    transform: scale(1.06);
+    border-color: rgba(255, 159, 90, 0.6);
+  }
+  .actor-node.dragging .person-photo {
+    box-shadow: 0 0 44px rgba(255, 159, 90, 0.35), 0 18px 52px rgba(0,0,0,0.7);
+    transform: scale(1.1);
+    transition: none;
+  }
+  .actor-node .person-photo img {
+    width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none;
+  }
+  .actor-node .person-photo .person-placeholder {
+    width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, #1a1510, #0d0a05);
+    color: rgba(255, 159, 90, 0.3);
+    font-size: 22px; font-weight: 200; letter-spacing: 2px;
+  }
+  .actor-node .person-name {
+    text-align: center; margin-top: 6px;
+    color: #ff9f5a; font-size: 10px; font-weight: 500;
+    letter-spacing: 0.2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    width: 80px;
+  }
+  .actor-node .person-role {
+    text-align: center; margin-top: 2px;
+    color: #302818; font-size: 8px; font-weight: 400;
+    letter-spacing: 1px; text-transform: uppercase;
+  }
+
+  /* == SEARCH POPUP (fixed UI overlay, not on canvas) == */
+  .search-popup {
+    position: fixed; z-index: 8000; width: 380px;
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+    animation: scaleIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .search-box {
+    background: #0c0c14; border: 1px solid #1a1a28;
+    border-radius: 16px; overflow: hidden;
+    box-shadow: 0 28px 100px rgba(0,0,0,0.85), 0 0 80px rgba(123,111,240,0.06);
+  }
+
+  .search-header {
+    display: flex; align-items: center; gap: 0;
+  }
+  .search-input {
+    flex: 1; padding: 18px 22px;
+    background: transparent; border: none;
+    color: #fff; font-size: 17px; font-weight: 300;
+    outline: none; font-family: inherit; letter-spacing: 0.3px;
+  }
+  .search-input::placeholder { color: #2a2a2a; }
+  .search-close {
+    width: 44px; height: 44px; margin-right: 8px;
+    background: none; border: 1px solid #1a1a28; border-radius: 10px;
+    color: #555; font-size: 18px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s; flex-shrink: 0;
+  }
+  .search-close:hover { border-color: #333; color: #aaa; background: rgba(255,255,255,0.03); }
+
+  .search-divider { height: 1px; background: #111; margin: 0 18px; }
+
+  .search-results { max-height: 420px; overflow-y: auto; }
+  .search-results::-webkit-scrollbar { width: 3px; }
+  .search-results::-webkit-scrollbar-thumb { background: #1a1a2a; border-radius: 4px; }
+
+  .search-result {
+    display: flex; align-items: center; gap: 14px;
+    padding: 12px 20px; cursor: pointer;
+    border-bottom: 1px solid #0e0e18;
+    transition: background 0.2s;
+  }
+  .search-result:hover { background: #0f0f1c; }
+  .search-result:last-child { border-bottom: none; }
+  .search-result.added {
+    opacity: 0.4; pointer-events: none;
+  }
+  .search-result .added-check {
+    color: #7b6ff0; font-size: 12px; font-weight: 500;
+    margin-left: auto; flex-shrink: 0; display: none;
+  }
+  .search-result.added .added-check { display: block; }
+
+  .result-thumb {
+    width: 46px; height: 66px; border-radius: 8px; overflow: hidden;
+    flex-shrink: 0; background: #080810;
+  }
+  .result-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .result-thumb .no-img {
+    width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    color: #1e1e1e; font-size: 10px;
+  }
+
+  .result-info { flex: 1; min-width: 0; }
+  .result-title {
+    color: #ccc; font-size: 14px; font-weight: 500;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .result-meta { color: #3a3a3a; font-size: 12px; margin-top: 3px; }
+  .result-meta .star { color: #f5c518; margin-left: 8px; }
+  .result-overview {
+    color: #2a2a2a; font-size: 11px; margin-top: 4px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; line-height: 1.4;
+  }
+
+  .search-loading, .search-error {
+    padding: 24px; text-align: center; font-size: 13px; color: #2a2a2a;
+  }
+  .search-error { color: #553333; }
+
+  .search-hint {
+    padding: 10px 20px 16px; color: #222; font-size: 11px; letter-spacing: 0.2px;
+  }
+
+  /* == MINIMAP == */
+  #minimap {
+    position: fixed; bottom: 72px; left: 24px; z-index: 60;
+    width: 180px; height: 120px;
+    background: rgba(10,10,18,0.85); backdrop-filter: blur(16px);
+    border: 1px solid #141422; border-radius: 12px;
+    overflow: hidden; cursor: pointer;
+    transition: opacity 0.4s, transform 0.3s;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    opacity: 0; transform: scale(0.9); pointer-events: none;
+  }
+  #minimap:hover { border-color: #222; }
+  #minimap.visible { opacity: 1; transform: scale(1); pointer-events: auto; }
+  #minimap canvas { width: 100%; height: 100%; display: block; }
+
+  #minimap-toggle {
+    position: fixed; bottom: 24px; left: 24px; z-index: 61;
+    width: 40px; height: 40px; border-radius: 10px;
+    background: rgba(10,10,18,0.85); backdrop-filter: blur(16px);
+    border: 1px solid #1a1a28;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; transition: all 0.3s;
+    color: #444; font-size: 16px;
+  }
+  #minimap-toggle:hover { border-color: #333; color: #888; }
+  #minimap-toggle.active { border-color: #7b6ff0; color: #7b6ff0; }
+  #minimap-toggle svg { width: 18px; height: 18px; }
+
+  /* == CONNECTION LABEL INPUT == */
+  .conn-label-popup {
+    position: fixed; z-index: 9000;
+    background: #0c0c14; border: 1px solid #222;
+    border-radius: 12px; padding: 12px 16px;
+    box-shadow: 0 16px 60px rgba(0,0,0,0.8);
+    animation: scaleIn 0.2s ease;
+    display: flex; gap: 8px; align-items: center;
+  }
+  .conn-label-input {
+    padding: 8px 12px; background: #080810; border: 1px solid #1a1a28;
+    border-radius: 8px; color: #fff; font-size: 13px; outline: none;
+    font-family: inherit; width: 160px;
+  }
+  .conn-label-input:focus { border-color: #7b6ff0; }
+  .conn-label-input::placeholder { color: #2a2a2a; }
+  .conn-label-btn {
+    padding: 8px 14px; background: #7b6ff0; border: none; border-radius: 8px;
+    color: #fff; font-size: 12px; cursor: pointer; font-family: inherit;
+    font-weight: 500;
+  }
+</style>
+</head>
+<body>
+
+<!-- == API KEY SCREEN == -->
+<div id="api-screen">
+  <div class="api-box">
+    <h1>Film Canvas</h1>
+    <div class="version">Version 4 — People Graph</div>
+    <p>This app uses <strong>TMDB</strong> to fetch movie posters, ratings, director, cast, and genres.</p>
+    <ol>
+      <li>Go to <a href="https://www.themoviedb.org/signup" target="_blank">themoviedb.org/signup</a> and create a free account</li>
+      <li>Go to <a href="https://www.themoviedb.org/settings/api" target="_blank">Settings &rarr; API</a></li>
+      <li>Copy your <strong>API Key (v3 auth)</strong></li>
+      <li>Paste it below</li>
+    </ol>
+    <input type="text" id="api-input" placeholder="Paste your TMDB API key...">
+    <button id="api-btn">Enter the Canvas</button>
+  </div>
+</div>
+
+<!-- == CANVAS == -->
+<div id="canvas-root" style="display:none;">
+  <div id="dot-grid"></div>
+  <div id="ambient-glow"></div>
+  <div id="watermark">Film Canvas</div>
+  <div id="zoom-indicator">100%</div>
+  <div id="card-count"></div>
+  <div id="empty-state">
+    <div class="main">Double-click anywhere to add your first film</div>
+    <div class="sub">Directors appear as circles, actors as squares</div>
+  </div>
+  <div id="canvas-layer">
+    <svg id="connections-svg" overflow="visible" style="position:absolute;top:0;left:0;width:1px;height:1px;overflow:visible;"></svg>
+  </div>
+  <div id="conn-mode">Hold <strong>C</strong> + click cards to connect them</div>
+  <div id="hints">
+    <span><strong>Double-click</strong> add film</span>
+    <span><strong>Click poster</strong> show cast</span>
+    <span><strong>Drag</strong> move nodes</span>
+    <span><strong>Scroll</strong> zoom</span>
+    <span><strong>Right-drag / Space</strong> pan</span>
+    <span><strong>Hold C</strong> connect mode</span>
+  </div>
+  <div id="hints-toggle" title="Toggle hints">?</div>
+  <div id="minimap-toggle" title="Toggle minimap">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="17" cy="17" r="1.5"/><circle cx="7" cy="17" r="1.5"/><circle cx="17" cy="7" r="1.5"/>
+    </svg>
+  </div>
+  <div id="minimap"><canvas id="minimap-canvas" width="360" height="240"></canvas></div>
+</div>
+
+<script>
+(() => {
+  // === STATE ===
+  let apiKey = "";
+  // Unified nodes array. type: "movie" | "director" | "actor"
+  // Movie nodes: { id, type:"movie", tmdbId, title, poster, year, rating, genres[], director, cast[], ... }
+  // Person nodes: { id, type:"director"|"actor", personId, name, photo, ... }
+  let nodes = [];
+  let connections = []; // { id, from, to, type, label }
+  let zoom = 1, panX = 0, panY = 0, nextZ = 1;
+
+  let dragging = null;
+  let panning = false, panSMx = 0, panSMy = 0, panSPx = 0, panSPy = 0;
+  let spaceHeld = false;
+  let activeSearch = null;
+  let connMode = false, connFirst = null;
+  let minimapOpen = false;
+  let physicsRunning = false;
+
+  // Person cache: personId -> node.id (avoid duplicates)
+  const personNodeMap = {};
+
+  const TMDB = "https://api.themoviedb.org/3";
+  const IMG = "https://image.tmdb.org/t/p";
+
+  // === PHYSICS ===
+  const SPRING_LENGTH = 280;
+  const SPRING_STRENGTH = 0.005;
+  const REPULSION_STRENGTH = 6000;
+  const DAMPING = 0.82;
+  const MIN_VELOCITY = 0.05;
+  const CENTER_GRAVITY = 0.0001;
+
+  // === DOM ===
+  const $ = id => document.getElementById(id);
+  const apiScreen = $("api-screen"), apiInput = $("api-input"), apiBtn = $("api-btn");
+  const canvasRoot = $("canvas-root"), canvasLayer = $("canvas-layer");
+  const dotGrid = $("dot-grid"), zoomInd = $("zoom-indicator");
+  const cardCountEl = $("card-count"), emptyState = $("empty-state");
+  const hintsEl = $("hints"), connModeEl = $("conn-mode");
+  const svg = $("connections-svg");
+  const minimapCanvas = $("minimap-canvas");
+  const minimapCtx = minimapCanvas.getContext("2d");
+  const minimap = $("minimap");
+  const minimapToggle = $("minimap-toggle");
+  const hintsToggle = $("hints-toggle");
+
+  // Track which movie's people are currently revealed
+  let revealedMovieId = null;
+
+  // === API KEY ===
+  apiInput.addEventListener("input", () => apiBtn.classList.toggle("active", !!apiInput.value.trim()));
+  apiInput.addEventListener("keydown", e => { if (e.key === "Enter" && apiInput.value.trim()) enter(); });
+  apiBtn.addEventListener("click", () => { if (apiInput.value.trim()) enter(); });
+
+  function enter() {
+    apiKey = apiInput.value.trim();
+    apiScreen.classList.add("hidden");
+    canvasRoot.style.display = "block";
+    startPhysicsLoop();
+    scheduleSave();
+  }
+
+  // === HINTS TOGGLE ===
+  let hintsOpen = false;
+  hintsToggle.addEventListener("click", () => {
+    hintsOpen = !hintsOpen;
+    hintsEl.classList.toggle("visible", hintsOpen);
+    hintsToggle.classList.toggle("active", hintsOpen);
+  });
+
+  // === HELPERS ===
+  function s2c(sx, sy) { return { x: (sx - panX) / zoom, y: (sy - panY) / zoom }; }
+
+  const DOT_THRESHOLD = 0.3; // below this zoom, cards become dots
+
+  function updateTransform() {
+    canvasLayer.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+    zoomInd.textContent = Math.round(zoom * 100) + "%";
+    dotGrid.style.backgroundSize = `${30 * zoom}px ${30 * zoom}px`;
+    dotGrid.style.backgroundPosition = `${panX % (30 * zoom)}px ${panY % (30 * zoom)}px`;
+
+    // Semantic zoom: switch to dot mode when zoomed out
+    const isDotMode = zoom < DOT_THRESHOLD;
+    nodes.forEach(n => {
+      n.el.classList.toggle("dot-mode", isDotMode);
+    });
+  }
+
+  function updateCount() {
+    const movieCount = nodes.filter(n => n.type === "movie").length;
+    cardCountEl.textContent = movieCount ? movieCount + " film" + (movieCount !== 1 ? "s" : "") : "";
+    emptyState.classList.toggle("hidden", movieCount > 0);
+  }
+
+  function gradientFor(str) {
+    let h = 0;
+    for (let i = 0; i < str.length; i++) h = str.charCodeAt(i) + ((h << 5) - h);
+    const h1 = Math.abs(h % 360), h2 = (h1 + 40) % 360;
+    return `linear-gradient(135deg, hsl(${h1},35%,14%), hsl(${h2},45%,9%))`;
+  }
+
+  function nodeInitials(name) {
+    return name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join("");
+  }
+
+  // Center point of a node (varies by type)
+  function nodeCenter(n) {
+    if (n.type === "movie") return { x: n.x + 80, y: n.y + 120 };
+    if (n.type === "director") return { x: n.x + 50, y: n.y + 50 };
+    if (n.type === "actor") return { x: n.x + 40, y: n.y + 40 };
+    return { x: n.x, y: n.y };
+  }
+
+  // === PHYSICS ENGINE ===
+  function applyForces() {
+    if (nodes.length === 0) return false;
+
+    const activeNodes = nodes.filter(isNodeVisible);
+    if (activeNodes.length === 0) return false;
+
+    activeNodes.forEach(n => { n.fx = 0; n.fy = 0; });
+
+    let cx = 0, cy = 0;
+    activeNodes.forEach(n => { const c = nodeCenter(n); cx += c.x; cy += c.y; });
+    cx /= activeNodes.length; cy /= activeNodes.length;
+
+    // Repulsion
+    for (let i = 0; i < activeNodes.length; i++) {
+      for (let j = i + 1; j < activeNodes.length; j++) {
+        const a = activeNodes[i], b = activeNodes[j];
+        const ac = nodeCenter(a), bc = nodeCenter(b);
+        let dx = bc.x - ac.x, dy = bc.y - ac.y;
+        let distSq = dx * dx + dy * dy;
+        if (distSq < 1) distSq = 1;
+        let dist = Math.sqrt(distSq);
+        let force = Math.min(REPULSION_STRENGTH / distSq, 10);
+        let fx = (dx / dist) * force, fy = (dy / dist) * force;
+        a.fx -= fx; a.fy -= fy;
+        b.fx += fx; b.fy += fy;
+      }
+    }
+
+    // Springs (only for visible connections)
+    connections.forEach(conn => {
+      const a = nodes.find(n => n.id === conn.from);
+      const b = nodes.find(n => n.id === conn.to);
+      if (!a || !b) return;
+      if (!isNodeVisible(a) || !isNodeVisible(b)) return;
+      const ac = nodeCenter(a), bc = nodeCenter(b);
+      let dx = bc.x - ac.x, dy = bc.y - ac.y;
+      let dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      let displacement = dist - SPRING_LENGTH;
+      let force = SPRING_STRENGTH * displacement;
+      let fx = (dx / dist) * force, fy = (dy / dist) * force;
+      a.fx += fx; a.fy += fy;
+      b.fx -= fx; b.fy -= fy;
+    });
+
+    // Center gravity
+    activeNodes.forEach(n => {
+      const c = nodeCenter(n);
+      n.fx += (cx - c.x) * CENTER_GRAVITY;
+      n.fy += (cy - c.y) * CENTER_GRAVITY;
+    });
+
+    let totalMovement = 0;
+    activeNodes.forEach(n => {
+      if (n.pinned) { n.vx = 0; n.vy = 0; return; }
+      n.vx = (n.vx + n.fx) * DAMPING;
+      n.vy = (n.vy + n.fy) * DAMPING;
+      if (Math.abs(n.vx) < MIN_VELOCITY && Math.abs(n.fx) < MIN_VELOCITY) n.vx = 0;
+      if (Math.abs(n.vy) < MIN_VELOCITY && Math.abs(n.fy) < MIN_VELOCITY) n.vy = 0;
+      totalMovement += Math.abs(n.vx) + Math.abs(n.vy);
+      n.x += n.vx;
+      n.y += n.vy;
+      n.el.style.left = n.x + "px";
+      n.el.style.top = n.y + "px";
+    });
+
+    return totalMovement > 0.1;
+  }
+
+  function startPhysicsLoop() {
+    if (physicsRunning) return;
+    physicsRunning = true;
+    let idleFrames = 0;
+    function tick() {
+      if (!physicsRunning) return;
+      const moving = applyForces();
+      if (moving) {
+        refreshConnections();
+        if (minimapOpen) drawMinimap();
+        idleFrames = 0;
+      } else { idleFrames++; }
+      if (idleFrames < 120) requestAnimationFrame(tick);
+      else physicsRunning = false;
+    }
+    requestAnimationFrame(tick);
+  }
+
+  function wakePhysics() { if (!physicsRunning) startPhysicsLoop(); }
+
+  // === FETCH MOVIE DETAILS (returns director + cast with IDs and photos) ===
+  async function fetchDetails(movieId) {
+    try {
+      const res = await fetch(`${TMDB}/movie/${movieId}?api_key=${apiKey}&append_to_response=credits`);
+      const data = await res.json();
+      const directorData = (data.credits?.crew || []).find(c => c.job === "Director");
+      const castData = (data.credits?.cast || []).slice(0, 3);
+      const genres = (data.genres || []).map(g => g.name);
+      return {
+        director: directorData ? {
+          id: directorData.id,
+          name: directorData.name,
+          photo: directorData.profile_path
+        } : null,
+        cast: castData.map(c => ({
+          id: c.id,
+          name: c.name,
+          photo: c.profile_path
+        })),
+        genres
+      };
+    } catch { return { director: null, cast: [], genres: [] }; }
+  }
+
+  // === NODE VISIBILITY ===
+  function isNodeVisible(n) {
+    if (n.type === "movie") return true;
+    return n.el.classList.contains("revealed");
+  }
+
+  // === CONNECTION RENDERING ===
+  function addConnection(fromId, toId, type, label) {
+    // Deduplicate
+    if (connections.find(c =>
+      ((c.from === fromId && c.to === toId) || (c.from === toId && c.to === fromId)) && c.type === type
+    )) return;
+
+    connections.push({
+      id: Date.now() + Math.random(),
+      from: fromId, to: toId, type, label: label || ""
+    });
+    wakePhysics();
+    scheduleSave();
+  }
+
+  function renderConnection(conn) {
+    const fromNode = nodes.find(n => n.id === conn.from);
+    const toNode = nodes.find(n => n.id === conn.to);
+    if (!fromNode || !toNode) return;
+    // Don't render lines to hidden person nodes
+    if (!isNodeVisible(fromNode) || !isNodeVisible(toNode)) return;
+
+    const a = nodeCenter(fromNode), b = nodeCenter(toNode);
+    const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    g.dataset.connId = conn.id;
+
+    // Thin white line
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    line.setAttribute("x1", a.x); line.setAttribute("y1", a.y);
+    line.setAttribute("x2", b.x); line.setAttribute("y2", b.y);
+    line.setAttribute("class", "conn-line");
+    g.appendChild(line);
+
+    // Label on hover
+    if (conn.label) {
+      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      const txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      txt.setAttribute("x", mx); txt.setAttribute("y", my - 6);
+      txt.setAttribute("class", "conn-label");
+      txt.textContent = conn.label;
+
+      const hoverArea = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      hoverArea.setAttribute("x1", a.x); hoverArea.setAttribute("y1", a.y);
+      hoverArea.setAttribute("x2", b.x); hoverArea.setAttribute("y2", b.y);
+      hoverArea.setAttribute("stroke", "transparent");
+      hoverArea.setAttribute("stroke-width", "20");
+      hoverArea.style.pointerEvents = "stroke";
+      hoverArea.addEventListener("mouseenter", () => txt.style.opacity = "1");
+      hoverArea.addEventListener("mouseleave", () => txt.style.opacity = "0");
+      g.appendChild(hoverArea);
+      g.appendChild(txt);
+    }
+
+    svg.appendChild(g);
+  }
+
+  function refreshConnections() {
+    svg.querySelectorAll("g[data-conn-id]").forEach(g => g.remove());
+    connections.forEach(renderConnection);
+  }
+
+  // === GENERIC DRAG SETUP ===
+  function setupDrag(el, node) {
+    el.addEventListener("mousedown", e => {
+      if (e.button !== 0) return;
+      if (connMode) return;
+      if (spaceHeld) return;
+      e.stopPropagation();
+      const cp = s2c(e.clientX, e.clientY);
+      dragging = { id: node.id, el, startMx: cp.x, startMy: cp.y, startCx: node.x, startCy: node.y };
+      node.z = nextZ++;
+      el.style.zIndex = node.z;
+      el.classList.add("dragging");
+      node.pinned = true;
+      wakePhysics();
+    });
+
+    // Connection mode
+    el.addEventListener("click", e => {
+      if (!connMode) return;
+      e.stopPropagation();
+      if (!connFirst) {
+        connFirst = node.id;
+        el.classList.add("conn-selected");
+      } else if (connFirst !== node.id) {
+        showConnLabelPopup(e.clientX, e.clientY, connFirst, node.id);
+        connFirst = null;
+        document.querySelectorAll(".conn-selected").forEach(c => c.classList.remove("conn-selected"));
+      }
+    });
+  }
+
+  // === CREATE PERSON NODE (director or actor) ===
+  function createPersonNode(person, type, nearX, nearY) {
+    // Check if person node already exists
+    const key = type + "-" + person.id;
+    if (personNodeMap[key]) return personNodeMap[key];
+
+    const isDirector = type === "director";
+    const size = isDirector ? 100 : 80;
+    const halfSize = size / 2;
+
+    // Offset from movie position
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 200 + Math.random() * 100;
+    const px = nearX + Math.cos(angle) * dist - halfSize;
+    const py = nearY + Math.sin(angle) * dist - halfSize;
+
+    const node = {
+      id: Date.now() + Math.random(),
+      type: type,
+      personId: person.id,
+      name: person.name,
+      photo: person.photo,
+      x: px, y: py, z: nextZ++,
+      vx: 0, vy: 0, fx: 0, fy: 0, pinned: false
+    };
+
+    const el = document.createElement("div");
+    el.className = `graph-node ${type}-node`;
+    el.dataset.nodeId = node.id;
+    el.style.left = node.x + "px";
+    el.style.top = node.y + "px";
+    el.style.zIndex = node.z;
+
+    const photoDiv = document.createElement("div");
+    photoDiv.className = "person-photo";
+
+    if (person.photo) {
+      const img = document.createElement("img");
+      img.src = `${IMG}/w185${person.photo}`;
+      img.alt = person.name;
+      img.draggable = false;
+      photoDiv.appendChild(img);
+    } else {
+      const ph = document.createElement("div");
+      ph.className = "person-placeholder";
+      ph.textContent = nodeInitials(person.name);
+      photoDiv.appendChild(ph);
+    }
+    el.appendChild(photoDiv);
+
+    const nameEl = document.createElement("div");
+    nameEl.className = "person-name";
+    nameEl.textContent = person.name;
+    el.appendChild(nameEl);
+
+    const roleEl = document.createElement("div");
+    roleEl.className = "person-role";
+    roleEl.textContent = isDirector ? "Director" : "Actor";
+    el.appendChild(roleEl);
+
+    // Add dot element for zoomed-out mode
+    const dot = document.createElement("div");
+    dot.className = "node-dot";
+    el.appendChild(dot);
+
+    setupDrag(el, node);
+
+    node.el = el;
+    // Store which movie IDs this person is connected to
+    node.movieLinks = [];
+    nodes.push(node);
+    canvasLayer.appendChild(el);
+
+    setTimeout(() => el.classList.add("placed"), 450);
+
+    personNodeMap[key] = node.id;
+    wakePhysics();
+    scheduleSave();
+    return node.id;
+  }
+
+  // === CREATE MOVIE CARD ===
+  async function createCard(movie, cx, cy) {
+    const node = {
+      id: Date.now() + Math.random(),
+      type: "movie",
+      tmdbId: movie.id,
+      title: movie.title,
+      poster: movie.poster_path,
+      year: (movie.release_date || "").slice(0, 4),
+      rating: movie.vote_average || 0,
+      overview: movie.overview || "",
+      genres: [], directorName: "", castNames: [],
+      x: cx, y: cy, z: nextZ++,
+      vx: 0, vy: 0, fx: 0, fy: 0, pinned: false
+    };
+
+    const el = document.createElement("div");
+    el.className = "graph-node movie-card";
+    el.dataset.nodeId = node.id;
+    el.style.left = node.x + "px";
+    el.style.top = node.y + "px";
+    el.style.zIndex = node.z;
+
+    const posterWrap = document.createElement("div");
+    posterWrap.className = "card-poster-wrap";
+
+    const posterDiv = document.createElement("div");
+    posterDiv.className = "card-poster";
+
+    if (node.poster) {
+      const img = document.createElement("img");
+      img.src = `${IMG}/w300${node.poster}`;
+      img.alt = node.title; img.draggable = false;
+      posterDiv.appendChild(img);
+    } else {
+      const ph = document.createElement("div");
+      ph.className = "card-placeholder";
+      ph.style.background = gradientFor(node.title);
+      ph.innerHTML = `<div class="initials">${nodeInitials(node.title)}</div><div class="ph-title">${node.title}</div>`;
+      posterDiv.appendChild(ph);
+    }
+
+    const removeBtn = document.createElement("div");
+    removeBtn.className = "card-remove";
+    removeBtn.innerHTML = "\u00d7";
+    removeBtn.addEventListener("mousedown", e => e.stopPropagation());
+    removeBtn.addEventListener("click", e => {
+      e.stopPropagation();
+      el.style.transition = "opacity 0.3s, transform 0.3s";
+      el.style.opacity = "0"; el.style.transform = "scale(0.8)";
+      setTimeout(() => {
+        el.remove();
+        nodes = nodes.filter(n => n.id !== node.id);
+        connections = connections.filter(c => c.from !== node.id && c.to !== node.id);
+        // Clean up orphaned person nodes (no connections left)
+        cleanOrphanPersonNodes();
+        refreshConnections();
+        updateCount();
+        if (minimapOpen) drawMinimap();
+        wakePhysics();
+      }, 300);
+    });
+    posterDiv.appendChild(removeBtn);
+    posterWrap.appendChild(posterDiv);
+    el.appendChild(posterWrap);
+
+    const info = document.createElement("div");
+    info.className = "card-info";
+    info.innerHTML = `
+      <div class="card-title">${node.title}</div>
+      ${node.year ? `<div class="card-year">${node.year}</div>` : ""}
+      ${node.rating > 0 ? `<div class="card-rating">\u2605 ${node.rating.toFixed(1)}</div>` : ""}
+      <div class="card-genres" id="genres-${node.id}"></div>
+    `;
+    el.appendChild(info);
+
+    // Dot element for zoom-out mode
+    const dot = document.createElement("div");
+    dot.className = "node-dot";
+    el.appendChild(dot);
+
+    // Store linked person node IDs for reveal/hide
+    node.personNodeIds = [];
+
+    setupDrag(el, node);
+
+    // Click poster to reveal/hide cast & director
+    // Track if this was a drag or a real click
+    let clickStartX = 0, clickStartY = 0;
+    el.addEventListener("mousedown", e => {
+      clickStartX = e.clientX; clickStartY = e.clientY;
+    });
+    el.addEventListener("click", e => {
+      if (connMode) return;
+      // Only trigger if mouse didn't move much (not a drag)
+      const dx = e.clientX - clickStartX, dy = e.clientY - clickStartY;
+      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) return;
+      toggleMoviePeople(node);
+    });
+
+    node.el = el;
+    nodes.push(node);
+    canvasLayer.appendChild(el);
+    updateCount();
+
+    setTimeout(() => el.classList.add("placed"), 450);
+
+    // Fetch details & create person nodes (hidden)
+    if (movie.id) {
+      const details = await fetchDetails(movie.id);
+      node.genres = details.genres;
+      node.directorName = details.director?.name || "";
+      node.castNames = details.cast.map(c => c.name);
+
+      // Genre tags
+      const genresEl = $("genres-" + node.id);
+      if (genresEl && node.genres.length) {
+        genresEl.innerHTML = node.genres.slice(0, 3).map(g =>
+          `<span class="card-genre-tag">${g}</span>`
+        ).join("");
+      }
+
+      // Create director node & connect (hidden by default)
+      if (details.director) {
+        const dirNodeId = createPersonNode(details.director, "director", cx, cy);
+        addConnection(node.id, dirNodeId, "director", details.director.name);
+        node.personNodeIds.push(dirNodeId);
+        // Track this movie on the person node
+        const dirNode = nodes.find(n => n.id === dirNodeId);
+        if (dirNode) dirNode.movieLinks.push(node.id);
+      }
+
+      // Create actor nodes & connect (hidden by default)
+      details.cast.forEach(actor => {
+        const actorNodeId = createPersonNode(actor, "actor", cx, cy);
+        addConnection(node.id, actorNodeId, "cast", actor.name);
+        node.personNodeIds.push(actorNodeId);
+        const actorNode = nodes.find(n => n.id === actorNodeId);
+        if (actorNode) actorNode.movieLinks.push(node.id);
+      });
+    }
+
+    wakePhysics();
+    if (minimapOpen) drawMinimap();
+    scheduleSave();
+  }
+
+  // === TOGGLE CAST/DIRECTOR VISIBILITY ===
+  function toggleMoviePeople(movieNode) {
+    const isRevealing = revealedMovieId !== movieNode.id;
+
+    // Hide all currently revealed person nodes
+    nodes.forEach(n => {
+      if (n.type === "director" || n.type === "actor") {
+        n.el.classList.remove("revealed");
+      }
+    });
+
+    if (isRevealing) {
+      revealedMovieId = movieNode.id;
+      movieNode.personNodeIds.forEach((pid, i) => {
+        const pNode = nodes.find(n => n.id === pid);
+        if (pNode) {
+          setTimeout(() => {
+            pNode.el.classList.add("revealed");
+            refreshConnections();
+            wakePhysics();
+          }, i * 80);
+        }
+      });
+    } else {
+      revealedMovieId = null;
+    }
+    refreshConnections();
+    wakePhysics();
+  }
+
+  // Remove person nodes that have no connections
+  function cleanOrphanPersonNodes() {
+    const orphans = nodes.filter(n =>
+      (n.type === "director" || n.type === "actor") &&
+      !connections.some(c => c.from === n.id || c.to === n.id)
+    );
+    orphans.forEach(n => {
+      n.el.style.transition = "opacity 0.3s, transform 0.3s";
+      n.el.style.opacity = "0"; n.el.style.transform = "scale(0.7)";
+      setTimeout(() => n.el.remove(), 300);
+      const key = n.type + "-" + n.personId;
+      delete personNodeMap[key];
+    });
+    nodes = nodes.filter(n => !orphans.includes(n));
+  }
+
+  // === MANUAL CONNECTION LABEL POPUP ===
+  function showConnLabelPopup(mx, my, fromId, toId) {
+    const popup = document.createElement("div");
+    popup.className = "conn-label-popup";
+    popup.style.left = mx + "px";
+    popup.style.top = my + "px";
+    popup.innerHTML = `
+      <input class="conn-label-input" placeholder="Label (optional)..." autofocus>
+      <button class="conn-label-btn">Link</button>
+    `;
+    const input = popup.querySelector("input");
+    const btn = popup.querySelector("button");
+
+    function finish() {
+      addConnection(fromId, toId, "manual", input.value.trim());
+      popup.remove();
+      if (minimapOpen) drawMinimap();
+    }
+
+    input.addEventListener("keydown", e => {
+      if (e.key === "Enter") finish();
+      if (e.key === "Escape") popup.remove();
+    });
+    btn.addEventListener("click", finish);
+    setTimeout(() => input.focus(), 50);
+    document.body.appendChild(popup);
+  }
+
+  // === SEARCH (fixed overlay, multi-select) ===
+  let searchSpawnPos = { x: 0, y: 0 }; // canvas coords where double-click happened
+  let searchAddOffset = 0; // offset each added card so they don't stack
+
+  function openSearch(cx, cy) {
+    closeSearch();
+    searchSpawnPos = { x: cx, y: cy };
+    searchAddOffset = 0;
+
+    const popup = document.createElement("div");
+    popup.className = "search-popup";
+    let timer = null;
+
+    popup.innerHTML = `
+      <div class="search-box">
+        <div class="search-header">
+          <input class="search-input" placeholder="Search movies..." autofocus>
+          <button class="search-close">\u00d7</button>
+        </div>
+        <div class="search-divider"></div>
+        <div class="search-results"></div>
+        <div class="search-hint">Type a movie name - click to add, pick multiple</div>
+      </div>
+    `;
+
+    const input = popup.querySelector(".search-input");
+    const results = popup.querySelector(".search-results");
+    const hint = popup.querySelector(".search-hint");
+    const closeBtn = popup.querySelector(".search-close");
+
+    popup.addEventListener("mousedown", e => e.stopPropagation());
+    popup.addEventListener("dblclick", e => e.stopPropagation());
+
+    closeBtn.addEventListener("click", () => closeSearch());
+    input.addEventListener("keydown", e => { if (e.key === "Escape") closeSearch(); });
+    input.addEventListener("input", () => {
+      clearTimeout(timer);
+      const q = input.value.trim();
+      if (!q) { results.innerHTML = ""; hint.style.display = "block"; return; }
+      hint.style.display = "none";
+      timer = setTimeout(() => searchMovies(q, results), 300);
+    });
+
+    document.body.appendChild(popup);
+    activeSearch = popup;
+    setTimeout(() => input.focus(), 60);
+  }
+
+  function closeSearch() {
+    if (activeSearch) { activeSearch.remove(); activeSearch = null; }
+  }
+
+  async function searchMovies(query, container) {
+    container.innerHTML = '<div class="search-loading">Searching...</div>';
+    try {
+      const res = await fetch(`${TMDB}/search/movie?api_key=${apiKey}&query=${encodeURIComponent(query)}&page=1`);
+      const data = await res.json();
+      if (data.status_code) {
+        container.innerHTML = `<div class="search-error">${data.status_message || "Check API key"}</div>`;
+        return;
+      }
+      const movies = (data.results || []).slice(0, 12);
+      if (!movies.length) { container.innerHTML = '<div class="search-loading">No results found</div>'; return; }
+
+      container.innerHTML = "";
+      movies.forEach(movie => {
+        const row = document.createElement("div");
+        row.className = "search-result";
+        const thumb = movie.poster_path
+          ? `<img src="${IMG}/w92${movie.poster_path}" alt="">` : `<div class="no-img">\u2014</div>`;
+        const year = (movie.release_date || "").slice(0, 4) || "\u2014";
+        const star = movie.vote_average > 0 ? `<span class="star">\u2605 ${movie.vote_average.toFixed(1)}</span>` : "";
+        const overview = movie.overview ? `<div class="result-overview">${movie.overview}</div>` : "";
+
+        row.innerHTML = `
+          <div class="result-thumb">${thumb}</div>
+          <div class="result-info">
+            <div class="result-title">${movie.title}</div>
+            <div class="result-meta">${year}${star}</div>
+            ${overview}
+          </div>
+          <span class="added-check">Added</span>
+        `;
+        row.addEventListener("click", () => {
+          if (row.classList.contains("added")) return;
+          row.classList.add("added");
+          // Offset each card so they don't pile up
+          const ox = searchSpawnPos.x + (searchAddOffset % 3) * 200;
+          const oy = searchSpawnPos.y + Math.floor(searchAddOffset / 3) * 340;
+          searchAddOffset++;
+          createCard(movie, ox, oy);
+        });
+        container.appendChild(row);
+      });
+    } catch { container.innerHTML = `<div class="search-error">Network error</div>`; }
+  }
+
+  // === MINIMAP ===
+  minimapToggle.addEventListener("click", () => {
+    minimapOpen = !minimapOpen;
+    minimap.classList.toggle("visible", minimapOpen);
+    minimapToggle.classList.toggle("active", minimapOpen);
+    if (minimapOpen) drawMinimap();
+  });
+
+  function drawMinimap() {
+    const W = 360, H = 240;
+    const ctx = minimapCtx;
+    ctx.clearRect(0, 0, W, H);
+    if (!nodes.length) return;
+
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    nodes.forEach(n => {
+      if (n.x < minX) minX = n.x;
+      if (n.x + 160 > maxX) maxX = n.x + 160;
+      if (n.y < minY) minY = n.y;
+      if (n.y + 300 > maxY) maxY = n.y + 300;
+    });
+    const pad = 200;
+    minX -= pad; minY -= pad; maxX += pad; maxY += pad;
+    const rangeX = maxX - minX || 1, rangeY = maxY - minY || 1;
+    const scale = Math.min(W / rangeX, H / rangeY);
+    const ox = (W - rangeX * scale) / 2, oy = (H - rangeY * scale) / 2;
+
+    // Connections
+    connections.forEach(conn => {
+      const from = nodes.find(n => n.id === conn.from);
+      const to = nodes.find(n => n.id === conn.to);
+      if (!from || !to) return;
+      const a = nodeCenter(from), b = nodeCenter(to);
+      ctx.beginPath();
+      ctx.moveTo(ox + (a.x - minX) * scale, oy + (a.y - minY) * scale);
+      ctx.lineTo(ox + (b.x - minX) * scale, oy + (b.y - minY) * scale);
+      ctx.strokeStyle = "rgba(255,255,255,0.12)";
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
+    });
+
+    // Nodes
+    nodes.forEach(n => {
+      const c = nodeCenter(n);
+      const dx = ox + (c.x - minX) * scale;
+      const dy = oy + (c.y - minY) * scale;
+      ctx.beginPath();
+      if (n.type === "movie") {
+        ctx.arc(dx, dy, 4, 0, Math.PI * 2);
+        ctx.fillStyle = "#7b6ff0";
+      } else if (n.type === "director") {
+        ctx.arc(dx, dy, 3, 0, Math.PI * 2);
+        ctx.fillStyle = "#9b7aff";
+      } else {
+        ctx.fillStyle = "#ff9f5a";
+        ctx.fillRect(dx - 2.5, dy - 2.5, 5, 5);
+        return;
+      }
+      ctx.fill();
+    });
+
+    // Viewport
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const vLeft = -panX / zoom, vTop = -panY / zoom;
+    const rx = ox + (vLeft - minX) * scale;
+    const ry = oy + (vTop - minY) * scale;
+    const rw = (vw / zoom) * scale, rh = (vh / zoom) * scale;
+    ctx.strokeStyle = "rgba(255,255,255,0.15)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(rx, ry, rw, rh);
+  }
+
+  minimap.addEventListener("click", e => {
+    if (!nodes.length) return;
+    const rect = minimap.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) / rect.width * 360;
+    const my = (e.clientY - rect.top) / rect.height * 240;
+
+    let minX = Infinity, maxX = -Infinity, minY2 = Infinity, maxY = -Infinity;
+    nodes.forEach(n => {
+      if (n.x < minX) minX = n.x; if (n.x + 160 > maxX) maxX = n.x + 160;
+      if (n.y < minY2) minY2 = n.y; if (n.y + 300 > maxY) maxY = n.y + 300;
+    });
+    const pad = 200;
+    minX -= pad; minY2 -= pad; maxX += pad; maxY += pad;
+    const rangeX = maxX - minX || 1, rangeY = maxY - minY2 || 1;
+    const scale = Math.min(360 / rangeX, 240 / rangeY);
+    const oxx = (360 - rangeX * scale) / 2, oyy = (240 - rangeY * scale) / 2;
+
+    const canvasX = (mx - oxx) / scale + minX;
+    const canvasY = (my - oyy) / scale + minY2;
+    panX = window.innerWidth / 2 - canvasX * zoom;
+    panY = window.innerHeight / 2 - canvasY * zoom;
+    updateTransform();
+    drawMinimap();
+  });
+
+  // === CANVAS EVENTS ===
+  canvasRoot.addEventListener("contextmenu", e => e.preventDefault());
+
+  canvasRoot.addEventListener("dblclick", e => {
+    if (e.target.closest(".graph-node")) return;
+    if (activeSearch) return;
+    const pos = s2c(e.clientX, e.clientY);
+    openSearch(pos.x, pos.y);
+  });
+
+  canvasRoot.addEventListener("click", e => {
+    // Click empty canvas = hide revealed people
+    if (!e.target.closest(".graph-node") && revealedMovieId) {
+      nodes.forEach(n => {
+        if (n.type === "director" || n.type === "actor") n.el.classList.remove("revealed");
+      });
+      revealedMovieId = null;
+      refreshConnections();
+    }
+  });
+
+  canvasRoot.addEventListener("mousedown", e => {
+    if (e.target.closest(".graph-node")) return;
+    const shouldPan = e.button === 2 || e.button === 1 || e.shiftKey || spaceHeld;
+    if (shouldPan) {
+      e.preventDefault();
+      panning = true;
+      panSMx = e.clientX; panSMy = e.clientY;
+      panSPx = panX; panSPy = panY;
+      canvasRoot.style.cursor = "grabbing";
+    }
+  });
+
+  document.addEventListener("mousedown", e => {
+    if (!spaceHeld) return;
+    if (e.target.closest(".search-popup")) return;
+    e.preventDefault();
+    panning = true;
+    panSMx = e.clientX; panSMy = e.clientY;
+    panSPx = panX; panSPy = panY;
+    canvasRoot.style.cursor = "grabbing";
+  });
+
+  window.addEventListener("mousemove", e => {
+    if (dragging) {
+      const cp = s2c(e.clientX, e.clientY);
+      const node = nodes.find(n => n.id === dragging.id);
+      if (node) {
+        node.x = dragging.startCx + (cp.x - dragging.startMx);
+        node.y = dragging.startCy + (cp.y - dragging.startMy);
+        node.el.style.left = node.x + "px";
+        node.el.style.top = node.y + "px";
+        wakePhysics();
+      }
+      return;
+    }
+    if (panning) {
+      panX = panSPx + (e.clientX - panSMx);
+      panY = panSPy + (e.clientY - panSMy);
+      updateTransform();
+      if (minimapOpen) drawMinimap();
+    }
+  });
+
+  window.addEventListener("mouseup", () => {
+    if (dragging) {
+      const node = nodes.find(n => n.id === dragging.id);
+      if (node) node.pinned = false;
+      dragging.el.classList.remove("dragging");
+      dragging = null;
+      wakePhysics();
+      scheduleSave();
+    }
+    if (panning) {
+      panning = false;
+      canvasRoot.style.cursor = spaceHeld ? "grab" : "crosshair";
+      scheduleSave();
+    }
+  });
+
+  canvasRoot.addEventListener("wheel", e => {
+    if (e.target.closest(".search-popup")) return; // let search results scroll
+    e.preventDefault();
+    const f = e.deltaY > 0 ? 0.92 : 1.08;
+    const nz = Math.max(0.08, Math.min(6, zoom * f));
+    const cx2 = e.clientX, cy2 = e.clientY;
+    panX = cx2 - (cx2 - panX) * (nz / zoom);
+    panY = cy2 - (cy2 - panY) * (nz / zoom);
+    zoom = nz;
+    updateTransform();
+    if (minimapOpen) drawMinimap();
+    scheduleSave();
+  }, { passive: false });
+
+  canvasRoot.addEventListener("auxclick", e => { if (e.button === 1) e.preventDefault(); });
+
+  // === SPACEBAR + CONNECTION MODE ===
+  window.addEventListener("keydown", e => {
+    if (e.code === "Space" && e.target.tagName !== "INPUT") {
+      e.preventDefault();
+      if (!spaceHeld) { spaceHeld = true; canvasRoot.style.cursor = "grab"; }
+    }
+    if ((e.key === "c" || e.key === "C") && e.target.tagName !== "INPUT") {
+      if (!connMode) {
+        connMode = true;
+        connModeEl.classList.add("active");
+        document.querySelectorAll(".graph-node").forEach(c => c.classList.add("conn-target"));
+        canvasRoot.style.cursor = "pointer";
+      }
+    }
+  });
+
+  window.addEventListener("keyup", e => {
+    if (e.code === "Space") {
+      spaceHeld = false;
+      if (!panning) canvasRoot.style.cursor = "crosshair";
+    }
+    if (e.key === "c" || e.key === "C") {
+      connMode = false; connFirst = null;
+      connModeEl.classList.remove("active");
+      document.querySelectorAll(".graph-node").forEach(c => {
+        c.classList.remove("conn-target"); c.classList.remove("conn-selected");
+      });
+      canvasRoot.style.cursor = spaceHeld ? "grab" : "crosshair";
+    }
+  });
+
+  // === PERSISTENCE (localStorage) ===
+  const STORAGE_KEY = "filmcanvas_library";
+
+  function saveLibrary() {
+    const data = {
+      apiKey,
+      zoom, panX, panY, nextZ,
+      nodes: nodes.map(n => {
+        const base = { id: n.id, type: n.type, x: n.x, y: n.y, z: n.z };
+        if (n.type === "movie") {
+          return { ...base, tmdbId: n.tmdbId, title: n.title, poster: n.poster,
+            year: n.year, rating: n.rating, overview: n.overview,
+            genres: n.genres, directorName: n.directorName, castNames: n.castNames,
+            personNodeIds: n.personNodeIds };
+        } else {
+          return { ...base, personId: n.personId, name: n.name, photo: n.photo,
+            movieLinks: n.movieLinks };
+        }
+      }),
+      connections: connections.map(c => ({
+        id: c.id, from: c.from, to: c.to, type: c.type, label: c.label
+      })),
+      personNodeMap: { ...personNodeMap }
+    };
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch {}
+  }
+
+  // Debounced save — don't hammer localStorage on every physics tick
+  let saveTimer = null;
+  function scheduleSave() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveLibrary, 500);
+  }
+
+  function loadLibrary() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return false;
+      const data = JSON.parse(raw);
+      if (!data.apiKey || !data.nodes?.length) return false;
+
+      apiKey = data.apiKey;
+      zoom = data.zoom || 1;
+      panX = data.panX || 0;
+      panY = data.panY || 0;
+      nextZ = data.nextZ || 1;
+
+      // Restore personNodeMap
+      if (data.personNodeMap) Object.assign(personNodeMap, data.personNodeMap);
+
+      // Rebuild person nodes first (so movie personNodeIds resolve)
+      data.nodes.filter(n => n.type === "director" || n.type === "actor").forEach(nd => {
+        rebuildPersonNode(nd);
+      });
+
+      // Rebuild movie nodes
+      data.nodes.filter(n => n.type === "movie").forEach(nd => {
+        rebuildMovieNode(nd);
+      });
+
+      // Restore connections
+      data.connections.forEach(c => {
+        connections.push(c);
+      });
+
+      return true;
+    } catch { return false; }
+  }
+
+  function rebuildPersonNode(nd) {
+    const isDirector = nd.type === "director";
+    const node = {
+      id: nd.id, type: nd.type, personId: nd.personId,
+      name: nd.name, photo: nd.photo,
+      x: nd.x, y: nd.y, z: nd.z,
+      vx: 0, vy: 0, fx: 0, fy: 0, pinned: false,
+      movieLinks: nd.movieLinks || []
+    };
+
+    const el = document.createElement("div");
+    el.className = `graph-node ${nd.type}-node placed`;
+    el.dataset.nodeId = node.id;
+    el.style.left = node.x + "px";
+    el.style.top = node.y + "px";
+    el.style.zIndex = node.z;
+
+    const photoDiv = document.createElement("div");
+    photoDiv.className = "person-photo";
+    if (node.photo) {
+      const img = document.createElement("img");
+      img.src = `${IMG}/w185${node.photo}`;
+      img.alt = node.name; img.draggable = false;
+      photoDiv.appendChild(img);
+    } else {
+      const ph = document.createElement("div");
+      ph.className = "person-placeholder";
+      ph.textContent = nodeInitials(node.name);
+      photoDiv.appendChild(ph);
+    }
+    el.appendChild(photoDiv);
+
+    const nameEl = document.createElement("div");
+    nameEl.className = "person-name";
+    nameEl.textContent = node.name;
+    el.appendChild(nameEl);
+
+    const roleEl = document.createElement("div");
+    roleEl.className = "person-role";
+    roleEl.textContent = isDirector ? "Director" : "Actor";
+    el.appendChild(roleEl);
+
+    const dot = document.createElement("div");
+    dot.className = "node-dot";
+    el.appendChild(dot);
+
+    setupDrag(el, node);
+
+    node.el = el;
+    nodes.push(node);
+    canvasLayer.appendChild(el);
+  }
+
+  function rebuildMovieNode(nd) {
+    const node = {
+      id: nd.id, type: "movie", tmdbId: nd.tmdbId,
+      title: nd.title, poster: nd.poster,
+      year: nd.year, rating: nd.rating, overview: nd.overview,
+      genres: nd.genres || [], directorName: nd.directorName || "",
+      castNames: nd.castNames || [],
+      personNodeIds: nd.personNodeIds || [],
+      x: nd.x, y: nd.y, z: nd.z,
+      vx: 0, vy: 0, fx: 0, fy: 0, pinned: false
+    };
+
+    const el = document.createElement("div");
+    el.className = "graph-node movie-card placed";
+    el.dataset.nodeId = node.id;
+    el.style.left = node.x + "px";
+    el.style.top = node.y + "px";
+    el.style.zIndex = node.z;
+
+    const posterWrap = document.createElement("div");
+    posterWrap.className = "card-poster-wrap";
+
+    const posterDiv = document.createElement("div");
+    posterDiv.className = "card-poster";
+
+    if (node.poster) {
+      const img = document.createElement("img");
+      img.src = `${IMG}/w300${node.poster}`;
+      img.alt = node.title; img.draggable = false;
+      posterDiv.appendChild(img);
+    } else {
+      const ph = document.createElement("div");
+      ph.className = "card-placeholder";
+      ph.style.background = gradientFor(node.title);
+      ph.innerHTML = `<div class="initials">${nodeInitials(node.title)}</div><div class="ph-title">${node.title}</div>`;
+      posterDiv.appendChild(ph);
+    }
+
+    const removeBtn = document.createElement("div");
+    removeBtn.className = "card-remove";
+    removeBtn.innerHTML = "\u00d7";
+    removeBtn.addEventListener("mousedown", e => e.stopPropagation());
+    removeBtn.addEventListener("click", e => {
+      e.stopPropagation();
+      el.style.transition = "opacity 0.3s, transform 0.3s";
+      el.style.opacity = "0"; el.style.transform = "scale(0.8)";
+      setTimeout(() => {
+        el.remove();
+        nodes = nodes.filter(n => n.id !== node.id);
+        connections = connections.filter(c => c.from !== node.id && c.to !== node.id);
+        cleanOrphanPersonNodes();
+        refreshConnections();
+        updateCount();
+        if (minimapOpen) drawMinimap();
+        wakePhysics();
+        scheduleSave();
+      }, 300);
+    });
+    posterDiv.appendChild(removeBtn);
+    posterWrap.appendChild(posterDiv);
+    el.appendChild(posterWrap);
+
+    const info = document.createElement("div");
+    info.className = "card-info";
+    info.innerHTML = `
+      <div class="card-title">${node.title}</div>
+      ${node.year ? `<div class="card-year">${node.year}</div>` : ""}
+      ${node.rating > 0 ? `<div class="card-rating">\u2605 ${node.rating.toFixed(1)}</div>` : ""}
+      <div class="card-genres">${(node.genres || []).slice(0, 3).map(g =>
+        `<span class="card-genre-tag">${g}</span>`).join("")}</div>
+    `;
+    el.appendChild(info);
+
+    const dot = document.createElement("div");
+    dot.className = "node-dot";
+    el.appendChild(dot);
+
+    setupDrag(el, node);
+
+    let clickStartX = 0, clickStartY = 0;
+    el.addEventListener("mousedown", e => { clickStartX = e.clientX; clickStartY = e.clientY; });
+    el.addEventListener("click", e => {
+      if (connMode) return;
+      const dx = e.clientX - clickStartX, dy = e.clientY - clickStartY;
+      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) return;
+      toggleMoviePeople(node);
+    });
+
+    node.el = el;
+    nodes.push(node);
+    canvasLayer.appendChild(el);
+    updateCount();
+  }
+
+  // === INIT ===
+  const loaded = loadLibrary();
+  if (loaded) {
+    // Skip API screen, go straight to canvas
+    apiScreen.classList.add("hidden");
+    canvasRoot.style.display = "block";
+    refreshConnections();
+    updateTransform();
+    updateCount();
+    startPhysicsLoop();
+  } else {
+    updateTransform();
+    updateCount();
+  }
+})();
+</script>
+</body>
+</html>

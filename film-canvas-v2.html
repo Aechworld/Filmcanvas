@@ -1,0 +1,1092 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Film Canvas v2</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #07070d;
+    font-family: 'Inter', system-ui, sans-serif;
+    color: #e0e0e0;
+    overflow: hidden;
+    height: 100vh; width: 100vw;
+    cursor: crosshair;
+    user-select: none;
+  }
+
+  /* ══ API KEY SCREEN ══ */
+  #api-screen {
+    position: fixed; inset: 0; z-index: 9999;
+    background: #07070d;
+    display: flex; align-items: center; justify-content: center;
+    animation: fadeIn 0.6s ease;
+  }
+  #api-screen.hidden { display: none; }
+
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes scaleIn { from { opacity: 0; transform: scale(0.85); } to { opacity: 1; transform: scale(1); } }
+  @keyframes glowPulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+
+  .api-box {
+    background: #0c0c14;
+    border: 1px solid #161625;
+    border-radius: 24px;
+    padding: 56px 48px;
+    max-width: 500px; width: 90%;
+    box-shadow: 0 0 160px rgba(100, 60, 255, 0.04);
+    animation: slideUp 0.5s ease;
+  }
+  .api-box h1 {
+    font-size: 36px; font-weight: 200;
+    letter-spacing: 6px; text-transform: uppercase;
+    color: #fff; margin-bottom: 6px;
+  }
+  .api-box .version {
+    font-size: 11px; color: #7b6ff0; letter-spacing: 3px;
+    text-transform: uppercase; font-weight: 400; margin-bottom: 28px;
+  }
+  .api-box p { color: #555; font-size: 14px; line-height: 1.7; }
+  .api-box ol { color: #444; font-size: 13px; line-height: 2.1; padding-left: 20px; margin: 16px 0 28px; }
+  .api-box a { color: #7b6ff0; text-decoration: none; transition: color 0.2s; }
+  .api-box a:hover { color: #9b8fff; }
+  .api-box strong { color: #888; font-weight: 500; }
+
+  #api-input {
+    width: 100%; padding: 16px 18px;
+    background: #08080f; border: 1px solid #1a1a28;
+    border-radius: 12px; color: #fff; font-size: 14px;
+    outline: none; font-family: inherit; letter-spacing: 0.3px;
+    transition: border-color 0.3s, box-shadow 0.3s;
+  }
+  #api-input:focus { border-color: #7b6ff0; box-shadow: 0 0 20px rgba(123,111,240,0.1); }
+  #api-input::placeholder { color: #2a2a2a; }
+
+  #api-btn {
+    width: 100%; padding: 16px; margin-top: 16px;
+    background: #111; border: none; border-radius: 12px;
+    color: #444; font-size: 15px; font-weight: 400;
+    cursor: default; font-family: inherit;
+    letter-spacing: 0.5px; transition: all 0.4s;
+  }
+  #api-btn.active {
+    background: linear-gradient(135deg, #7b6ff0, #5a4fd4);
+    color: #fff; cursor: pointer;
+  }
+  #api-btn.active:hover { transform: translateY(-2px); box-shadow: 0 10px 40px rgba(123,111,240,0.3); }
+
+  /* ══ CANVAS ══ */
+  #canvas-root {
+    position: fixed; inset: 0;
+    background: radial-gradient(ellipse at 50% 30%, #0d0d1a 0%, #07070d 70%);
+  }
+
+  #dot-grid {
+    position: fixed; inset: 0; pointer-events: none; opacity: 0.02;
+    background-image: radial-gradient(circle, #fff 1px, transparent 1px);
+    background-size: 30px 30px;
+    transition: background-size 0.1s, background-position 0.1s;
+  }
+
+  /* Ambient background glow */
+  #ambient-glow {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(circle at 30% 40%, rgba(123,111,240,0.015) 0%, transparent 50%),
+                radial-gradient(circle at 70% 60%, rgba(0,180,220,0.01) 0%, transparent 50%);
+  }
+
+  #watermark {
+    position: fixed; top: 24px; left: 32px; z-index: 5;
+    color: rgba(255,255,255,0.025); font-size: 52px; font-weight: 200;
+    letter-spacing: 8px; text-transform: uppercase; pointer-events: none;
+  }
+
+  #zoom-indicator {
+    position: fixed; top: 28px; right: 32px; z-index: 5;
+    color: #1e1e1e; font-size: 12px; font-family: 'SF Mono', 'Fira Code', monospace;
+    pointer-events: none;
+  }
+
+  #card-count {
+    position: fixed; bottom: 32px; right: 32px; z-index: 5;
+    color: #1e1e1e; font-size: 12px; font-family: 'SF Mono', 'Fira Code', monospace;
+    pointer-events: none;
+  }
+
+  #canvas-layer { position: absolute; transform-origin: 0 0; }
+
+  /* ══ SVG CONNECTIONS LAYER ══ */
+  #connections-svg {
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    overflow: visible;
+  }
+
+  .conn-line {
+    fill: none; stroke-width: 1.5;
+    opacity: 0;
+    animation: lineAppear 0.8s ease forwards;
+  }
+  @keyframes lineAppear { to { opacity: 1; } }
+
+  .conn-line-glow {
+    fill: none; stroke-width: 6; opacity: 0;
+    filter: blur(4px);
+    animation: lineAppear 0.8s ease 0.1s forwards;
+  }
+
+  .conn-dot {
+    r: 3; opacity: 0.9;
+  }
+
+  .conn-label {
+    font-family: 'Inter', sans-serif; font-size: 10px;
+    fill: #555; text-anchor: middle; pointer-events: none;
+    opacity: 0; transition: opacity 0.3s;
+  }
+
+  /* ══ EMPTY STATE ══ */
+  #empty-state {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 12px; pointer-events: none;
+  }
+  #empty-state.hidden { display: none; }
+  #empty-state .main { color: #1e1e2a; font-size: 20px; font-weight: 300; letter-spacing: 2px; }
+  #empty-state .sub { color: #141420; font-size: 13px; font-weight: 300; }
+
+  /* ══ HINTS ══ */
+  #hints {
+    position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%);
+    z-index: 50; background: rgba(10,10,18,0.95); backdrop-filter: blur(20px);
+    border: 1px solid #141422; border-radius: 16px;
+    padding: 14px 32px; display: flex; gap: 24;
+    color: #444; font-size: 12px; letter-spacing: 0.3px; white-space: nowrap;
+    animation: slideUp 0.5s ease 0.3s both;
+    transition: opacity 0.8s;
+  }
+  #hints.hidden { opacity: 0; pointer-events: none; }
+  #hints strong { color: #777; font-weight: 500; }
+
+  /* ══ CONNECTION MODE INDICATOR ══ */
+  #conn-mode {
+    position: fixed; top: 28px; left: 50%; transform: translateX(-50%);
+    z-index: 100; background: rgba(123,111,240,0.12); backdrop-filter: blur(12px);
+    border: 1px solid rgba(123,111,240,0.25); border-radius: 10px;
+    padding: 10px 24px; color: #b0a4ff; font-size: 13px;
+    letter-spacing: 0.4px; display: none;
+    animation: scaleIn 0.2s ease;
+  }
+  #conn-mode.active { display: block; }
+
+  /* ══ MOVIE CARD ══ */
+  .movie-card {
+    position: absolute; width: 160px; cursor: grab;
+    animation: cardAppear 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    opacity: 0;
+  }
+  @keyframes cardAppear {
+    from { opacity: 0; transform: scale(0.7) translateY(10px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  /* Ambient floating */
+  @keyframes float1 { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-4px); } }
+  @keyframes float2 { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-5px); } }
+  @keyframes float3 { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-3px); } }
+
+  .movie-card.placed { animation: none; opacity: 1; }
+  .movie-card.float-1 .card-poster-wrap { animation: float1 4.5s ease-in-out infinite; }
+  .movie-card.float-2 .card-poster-wrap { animation: float2 5.2s ease-in-out infinite; }
+  .movie-card.float-3 .card-poster-wrap { animation: float3 3.8s ease-in-out infinite; }
+
+  .movie-card:active { cursor: grabbing; }
+  .movie-card.dragging { z-index: 10000 !important; }
+  .movie-card.dragging .card-poster-wrap { animation: none !important; }
+
+  .card-poster-wrap { transition: box-shadow 0.3s, transform 0.3s; }
+
+  .card-poster {
+    width: 160px; height: 240px; border-radius: 12px; overflow: hidden;
+    position: relative;
+    box-shadow: 0 8px 36px rgba(0,0,0,0.6);
+    border: 1px solid rgba(255,255,255,0.04);
+    transition: box-shadow 0.3s, transform 0.3s;
+  }
+  .movie-card:hover .card-poster {
+    box-shadow: 0 16px 52px rgba(0,0,0,0.7), 0 0 28px rgba(123,111,240,0.1);
+    transform: scale(1.03);
+  }
+  .movie-card.dragging .card-poster {
+    box-shadow: 0 28px 72px rgba(0,0,0,0.85), 0 0 50px rgba(123,111,240,0.2);
+    transform: scale(1.07);
+    transition: none;
+  }
+
+  /* Highlight glow when connection mode */
+  .movie-card.conn-target .card-poster {
+    box-shadow: 0 0 30px rgba(123,111,240,0.4), 0 8px 36px rgba(0,0,0,0.6);
+  }
+  .movie-card.conn-selected .card-poster {
+    box-shadow: 0 0 40px rgba(123,111,240,0.6), 0 8px 36px rgba(0,0,0,0.6);
+    border-color: rgba(123,111,240,0.4);
+  }
+
+  .card-poster img {
+    width: 100%; height: 100%; object-fit: cover; pointer-events: none; display: block;
+  }
+
+  .card-placeholder {
+    width: 100%; height: 100%;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px;
+  }
+  .card-placeholder .initials {
+    font-size: 44px; font-weight: 200; color: rgba(255,255,255,0.08); letter-spacing: 6px;
+  }
+  .card-placeholder .ph-title {
+    font-size: 11px; color: rgba(255,255,255,0.12);
+    margin-top: 10px; text-align: center; line-height: 1.4; font-weight: 300;
+  }
+
+  .card-info { padding: 10px 4px 0; text-align: center; }
+  .card-title {
+    color: #bbb; font-size: 13px; font-weight: 500;
+    line-height: 1.3; letter-spacing: 0.2px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .card-year { color: #383838; font-size: 11px; margin-top: 4px; font-weight: 300; }
+  .card-rating { color: #f5c518; font-size: 11px; margin-top: 2px; }
+  .card-genres {
+    margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; justify-content: center;
+  }
+  .card-genre-tag {
+    font-size: 9px; color: #444; background: rgba(255,255,255,0.03);
+    border: 1px solid #1a1a2a; border-radius: 6px; padding: 2px 7px;
+    letter-spacing: 0.3px;
+  }
+
+  .card-remove {
+    position: absolute; top: 6px; right: 6px;
+    width: 24px; height: 24px; border-radius: 50%;
+    background: rgba(0,0,0,0.75); border: 1px solid rgba(255,255,255,0.08);
+    color: #666; font-size: 14px;
+    display: none; align-items: center; justify-content: center;
+    cursor: pointer; backdrop-filter: blur(4px);
+    transition: all 0.15s; z-index: 2; line-height: 1;
+  }
+  .movie-card:hover .card-remove { display: flex; }
+  .card-remove:hover { background: rgba(200,40,40,0.85); color: #fff; border-color: transparent; }
+
+  /* ══ SEARCH POPUP ══ */
+  .search-popup {
+    position: absolute; z-index: 8000; width: 340px;
+    animation: scaleIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .search-box {
+    background: #0c0c14; border: 1px solid #1a1a28;
+    border-radius: 16px; overflow: hidden;
+    box-shadow: 0 28px 100px rgba(0,0,0,0.85), 0 0 80px rgba(123,111,240,0.03);
+  }
+
+  .search-input {
+    width: 100%; padding: 18px 22px;
+    background: transparent; border: none;
+    color: #fff; font-size: 17px; font-weight: 300;
+    outline: none; font-family: inherit; letter-spacing: 0.3px;
+  }
+  .search-input::placeholder { color: #2a2a2a; }
+
+  .search-divider { height: 1px; background: #111; margin: 0 18px; }
+
+  .search-results { max-height: 420px; overflow-y: auto; }
+  .search-results::-webkit-scrollbar { width: 3px; }
+  .search-results::-webkit-scrollbar-thumb { background: #1a1a2a; border-radius: 4px; }
+
+  .search-result {
+    display: flex; align-items: center; gap: 14px;
+    padding: 12px 20px; cursor: pointer;
+    border-bottom: 1px solid #0e0e18;
+    transition: background 0.2s;
+  }
+  .search-result:hover { background: #0f0f1c; }
+  .search-result:last-child { border-bottom: none; }
+
+  .result-thumb {
+    width: 46px; height: 66px; border-radius: 8px; overflow: hidden;
+    flex-shrink: 0; background: #080810;
+  }
+  .result-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .result-thumb .no-img {
+    width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    color: #1e1e1e; font-size: 10px;
+  }
+
+  .result-info { flex: 1; min-width: 0; }
+  .result-title {
+    color: #ccc; font-size: 14px; font-weight: 500;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .result-meta { color: #3a3a3a; font-size: 12px; margin-top: 3px; }
+  .result-meta .star { color: #f5c518; margin-left: 8px; }
+  .result-overview {
+    color: #2a2a2a; font-size: 11px; margin-top: 4px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; line-height: 1.4;
+  }
+
+  .search-loading, .search-error {
+    padding: 24px; text-align: center; font-size: 13px; color: #2a2a2a;
+  }
+  .search-error { color: #553333; }
+
+  .search-hint {
+    padding: 10px 20px 16px; color: #222; font-size: 11px; letter-spacing: 0.2px;
+  }
+
+  /* ══ MINIMAP ══ */
+  #minimap {
+    position: fixed; bottom: 72px; left: 24px; z-index: 60;
+    width: 180px; height: 120px;
+    background: rgba(10,10,18,0.85); backdrop-filter: blur(16px);
+    border: 1px solid #141422; border-radius: 12px;
+    overflow: hidden; cursor: pointer;
+    transition: opacity 0.4s, transform 0.3s;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+  #minimap:hover { border-color: #222; }
+  #minimap.hidden { opacity: 0; transform: scale(0.9); pointer-events: none; }
+  #minimap canvas { width: 100%; height: 100%; display: block; }
+
+  /* ══ CONNECTION LABEL INPUT ══ */
+  .conn-label-popup {
+    position: fixed; z-index: 9000;
+    background: #0c0c14; border: 1px solid #222;
+    border-radius: 12px; padding: 12px 16px;
+    box-shadow: 0 16px 60px rgba(0,0,0,0.8);
+    animation: scaleIn 0.2s ease;
+    display: flex; gap: 8px; align-items: center;
+  }
+  .conn-label-input {
+    padding: 8px 12px; background: #080810; border: 1px solid #1a1a28;
+    border-radius: 8px; color: #fff; font-size: 13px; outline: none;
+    font-family: inherit; width: 160px;
+  }
+  .conn-label-input:focus { border-color: #7b6ff0; }
+  .conn-label-input::placeholder { color: #2a2a2a; }
+  .conn-label-btn {
+    padding: 8px 14px; background: #7b6ff0; border: none; border-radius: 8px;
+    color: #fff; font-size: 12px; cursor: pointer; font-family: inherit;
+    font-weight: 500;
+  }
+</style>
+</head>
+<body>
+
+<!-- ══ API KEY SCREEN ══ -->
+<div id="api-screen">
+  <div class="api-box">
+    <h1>Film Canvas</h1>
+    <div class="version">Version 2 — Constellation</div>
+    <p>This app uses <strong>TMDB</strong> to fetch movie posters, ratings, director, cast, and genres.</p>
+    <ol>
+      <li>Go to <a href="https://www.themoviedb.org/signup" target="_blank">themoviedb.org/signup</a> and create a free account</li>
+      <li>Go to <a href="https://www.themoviedb.org/settings/api" target="_blank">Settings → API</a></li>
+      <li>Copy your <strong>API Key (v3 auth)</strong></li>
+      <li>Paste it below</li>
+    </ol>
+    <input type="text" id="api-input" placeholder="Paste your TMDB API key...">
+    <button id="api-btn">Enter the Canvas</button>
+  </div>
+</div>
+
+<!-- ══ CANVAS ══ -->
+<div id="canvas-root" style="display:none;">
+  <div id="dot-grid"></div>
+  <div id="ambient-glow"></div>
+  <div id="watermark">Film Canvas</div>
+  <div id="zoom-indicator">100%</div>
+  <div id="card-count"></div>
+  <div id="empty-state">
+    <div class="main">Double-click anywhere to add your first film</div>
+    <div class="sub">Build your constellation on an infinite canvas</div>
+  </div>
+  <div id="canvas-layer">
+    <svg id="connections-svg">
+      <defs>
+        <filter id="glow-purple" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="4" result="blur"/>
+          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <filter id="glow-cyan" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="4" result="blur"/>
+          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+    </svg>
+  </div>
+  <div id="conn-mode">Hold <strong>C</strong> + click cards to connect them</div>
+  <div id="hints">
+    <span><strong>Double-click</strong> add film</span>
+    <span><strong>Drag</strong> move cards</span>
+    <span><strong>Scroll</strong> zoom</span>
+    <span><strong>Shift+Drag</strong> pan</span>
+    <span><strong>Hold C</strong> connect mode</span>
+  </div>
+  <div id="minimap"><canvas id="minimap-canvas" width="360" height="240"></canvas></div>
+</div>
+
+<script>
+(() => {
+  // ═══ STATE ═══
+  let apiKey = "";
+  let cards = []; // { id, title, poster, year, rating, overview, genres[], director, cast[], x, y, z, el }
+  let connections = []; // { id, from, to, type, label, color }
+  let zoom = 1, panX = 0, panY = 0, nextZ = 1;
+
+  // Drag
+  let dragging = null;
+  // Pan
+  let panning = false, panSMx = 0, panSMy = 0, panSPx = 0, panSPy = 0;
+  // Search
+  let activeSearch = null;
+  // Connection mode
+  let connMode = false, connFirst = null;
+
+  const TMDB = "https://api.themoviedb.org/3";
+  const IMG = "https://image.tmdb.org/t/p";
+
+  const CONN_COLORS = {
+    director: "#9b7aff",
+    genre: "#4dd9e8",
+    cast: "#ff9f5a",
+    manual: "#7b6ff0"
+  };
+
+  // ═══ DOM ═══
+  const $ = id => document.getElementById(id);
+  const apiScreen = $("api-screen"), apiInput = $("api-input"), apiBtn = $("api-btn");
+  const canvasRoot = $("canvas-root"), canvasLayer = $("canvas-layer");
+  const dotGrid = $("dot-grid"), zoomInd = $("zoom-indicator");
+  const cardCountEl = $("card-count"), emptyState = $("empty-state");
+  const hintsEl = $("hints"), connModeEl = $("conn-mode");
+  const svg = $("connections-svg");
+  const minimapCanvas = $("minimap-canvas");
+  const minimapCtx = minimapCanvas.getContext("2d");
+  const minimap = $("minimap");
+
+  // ═══ API KEY ═══
+  apiInput.addEventListener("input", () => apiBtn.classList.toggle("active", !!apiInput.value.trim()));
+  apiInput.addEventListener("keydown", e => { if (e.key === "Enter" && apiInput.value.trim()) enter(); });
+  apiBtn.addEventListener("click", () => { if (apiInput.value.trim()) enter(); });
+
+  function enter() {
+    apiKey = apiInput.value.trim();
+    apiScreen.classList.add("hidden");
+    canvasRoot.style.display = "block";
+    setTimeout(() => hintsEl.classList.add("hidden"), 10000);
+    requestAnimationFrame(drawMinimap);
+  }
+
+  // ═══ HELPERS ═══
+  function s2c(sx, sy) { return { x: (sx - panX) / zoom, y: (sy - panY) / zoom }; }
+
+  function updateTransform() {
+    canvasLayer.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+    zoomInd.textContent = Math.round(zoom * 100) + "%";
+    dotGrid.style.backgroundSize = `${30 * zoom}px ${30 * zoom}px`;
+    dotGrid.style.backgroundPosition = `${panX % (30 * zoom)}px ${panY % (30 * zoom)}px`;
+  }
+
+  function updateCount() {
+    cardCountEl.textContent = cards.length ? cards.length + " film" + (cards.length !== 1 ? "s" : "") : "";
+    emptyState.classList.toggle("hidden", cards.length > 0);
+  }
+
+  function gradientFor(str) {
+    let h = 0;
+    for (let i = 0; i < str.length; i++) h = str.charCodeAt(i) + ((h << 5) - h);
+    const h1 = Math.abs(h % 360), h2 = (h1 + 40) % 360;
+    return `linear-gradient(135deg, hsl(${h1},35%,14%), hsl(${h2},45%,9%))`;
+  }
+
+  function initials(t) { return t.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join(""); }
+
+  function cardCenter(card) {
+    return { x: card.x + 80, y: card.y + 120 };
+  }
+
+  // ═══ FETCH MOVIE DETAILS (director, cast, genres) ═══
+  async function fetchDetails(movieId) {
+    try {
+      const res = await fetch(`${TMDB}/movie/${movieId}?api_key=${apiKey}&append_to_response=credits`);
+      const data = await res.json();
+      const director = (data.credits?.crew || []).find(c => c.job === "Director")?.name || "";
+      const cast = (data.credits?.cast || []).slice(0, 5).map(c => c.name);
+      const genres = (data.genres || []).map(g => g.name);
+      return { director, cast, genres };
+    } catch { return { director: "", cast: [], genres: [] }; }
+  }
+
+  // ═══ AUTO-DETECT CONNECTIONS ═══
+  function autoConnect(newCard) {
+    cards.forEach(existing => {
+      if (existing.id === newCard.id) return;
+
+      // Same director
+      if (newCard.director && existing.director && newCard.director === existing.director) {
+        if (!connections.find(c =>
+          (c.from === newCard.id && c.to === existing.id) ||
+          (c.from === existing.id && c.to === newCard.id) && c.type === "director"
+        )) {
+          addConnection(newCard.id, existing.id, "director", newCard.director);
+        }
+      }
+
+      // Shared genres
+      const sharedGenres = (newCard.genres || []).filter(g => (existing.genres || []).includes(g));
+      if (sharedGenres.length > 0) {
+        if (!connections.find(c =>
+          ((c.from === newCard.id && c.to === existing.id) ||
+           (c.from === existing.id && c.to === newCard.id)) && c.type === "genre"
+        )) {
+          addConnection(newCard.id, existing.id, "genre", sharedGenres[0]);
+        }
+      }
+
+      // Shared cast
+      const sharedCast = (newCard.cast || []).filter(a => (existing.cast || []).includes(a));
+      if (sharedCast.length > 0) {
+        if (!connections.find(c =>
+          ((c.from === newCard.id && c.to === existing.id) ||
+           (c.from === existing.id && c.to === newCard.id)) && c.type === "cast"
+        )) {
+          addConnection(newCard.id, existing.id, "cast", sharedCast[0]);
+        }
+      }
+    });
+  }
+
+  // ═══ CONNECTION RENDERING ═══
+  function addConnection(fromId, toId, type, label) {
+    const conn = {
+      id: Date.now() + Math.random(),
+      from: fromId, to: toId,
+      type: type,
+      label: label || "",
+      color: CONN_COLORS[type] || CONN_COLORS.manual
+    };
+    connections.push(conn);
+    renderConnection(conn);
+  }
+
+  function renderConnection(conn) {
+    const fromCard = cards.find(c => c.id === conn.from);
+    const toCard = cards.find(c => c.id === conn.to);
+    if (!fromCard || !toCard) return;
+
+    const a = cardCenter(fromCard), b = cardCenter(toCard);
+    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    // Perpendicular offset for curve
+    const off = Math.min(dist * 0.15, 60);
+    const cx1 = mx - dy / dist * off, cy1 = my + dx / dist * off;
+
+    const pathD = `M${a.x},${a.y} Q${cx1},${cy1} ${b.x},${b.y}`;
+
+    const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    g.dataset.connId = conn.id;
+
+    // Glow line
+    const glow = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    glow.setAttribute("d", pathD);
+    glow.setAttribute("class", "conn-line-glow");
+    glow.setAttribute("stroke", conn.color);
+    glow.setAttribute("style", `opacity: 0; animation: lineAppear 0.8s ease 0.1s forwards;`);
+    g.appendChild(glow);
+
+    // Main line
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    line.setAttribute("d", pathD);
+    line.setAttribute("class", "conn-line");
+    line.setAttribute("stroke", conn.color);
+    line.setAttribute("stroke-dasharray", "4,8");
+    line.id = "conn-path-" + conn.id;
+    g.appendChild(line);
+
+    // Animated traveling dot
+    const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    dot.setAttribute("r", "2.5");
+    dot.setAttribute("fill", conn.color);
+    dot.style.filter = `drop-shadow(0 0 4px ${conn.color})`;
+    const anim = document.createElementNS("http://www.w3.org/2000/svg", "animateMotion");
+    anim.setAttribute("dur", (2 + Math.random() * 2).toFixed(1) + "s");
+    anim.setAttribute("repeatCount", "indefinite");
+    anim.setAttribute("path", pathD);
+    dot.appendChild(anim);
+    g.appendChild(dot);
+
+    // Label
+    if (conn.label) {
+      const txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      txt.setAttribute("x", cx1);
+      txt.setAttribute("y", cy1 - 8);
+      txt.setAttribute("class", "conn-label");
+      txt.textContent = conn.label;
+      // Show on hover area
+      const hoverArea = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      hoverArea.setAttribute("d", pathD);
+      hoverArea.setAttribute("stroke", "transparent");
+      hoverArea.setAttribute("stroke-width", "20");
+      hoverArea.setAttribute("fill", "none");
+      hoverArea.style.pointerEvents = "stroke";
+      hoverArea.addEventListener("mouseenter", () => txt.style.opacity = "1");
+      hoverArea.addEventListener("mouseleave", () => txt.style.opacity = "0");
+      g.appendChild(hoverArea);
+      g.appendChild(txt);
+    }
+
+    svg.appendChild(g);
+  }
+
+  function refreshConnections() {
+    svg.querySelectorAll("g[data-conn-id]").forEach(g => g.remove());
+    connections.forEach(renderConnection);
+  }
+
+  // ═══ CREATE CARD ═══
+  async function createCard(movie, cx, cy) {
+    const floatClass = ["float-1", "float-2", "float-3"][Math.floor(Math.random() * 3)];
+    const floatDelay = (Math.random() * 3).toFixed(1) + "s";
+
+    const card = {
+      id: Date.now() + Math.random(),
+      tmdbId: movie.id,
+      title: movie.title,
+      poster: movie.poster_path,
+      year: (movie.release_date || "").slice(0, 4),
+      rating: movie.vote_average || 0,
+      overview: movie.overview || "",
+      genres: [], director: "", cast: [],
+      x: cx, y: cy, z: nextZ++
+    };
+
+    const el = document.createElement("div");
+    el.className = "movie-card " + floatClass;
+    el.dataset.cardId = card.id;
+    el.style.left = card.x + "px";
+    el.style.top = card.y + "px";
+    el.style.zIndex = card.z;
+
+    const posterWrap = document.createElement("div");
+    posterWrap.className = "card-poster-wrap";
+    posterWrap.style.animationDelay = floatDelay;
+
+    const posterDiv = document.createElement("div");
+    posterDiv.className = "card-poster";
+
+    if (card.poster) {
+      const img = document.createElement("img");
+      img.src = `${IMG}/w300${card.poster}`;
+      img.alt = card.title; img.draggable = false;
+      posterDiv.appendChild(img);
+    } else {
+      const ph = document.createElement("div");
+      ph.className = "card-placeholder";
+      ph.style.background = gradientFor(card.title);
+      ph.innerHTML = `<div class="initials">${initials(card.title)}</div><div class="ph-title">${card.title}</div>`;
+      posterDiv.appendChild(ph);
+    }
+
+    const removeBtn = document.createElement("div");
+    removeBtn.className = "card-remove";
+    removeBtn.innerHTML = "×";
+    removeBtn.addEventListener("mousedown", e => e.stopPropagation());
+    removeBtn.addEventListener("click", e => {
+      e.stopPropagation();
+      el.style.transition = "opacity 0.3s, transform 0.3s";
+      el.style.opacity = "0"; el.style.transform = "scale(0.8)";
+      setTimeout(() => {
+        el.remove();
+        cards = cards.filter(c => c.id !== card.id);
+        connections = connections.filter(c => c.from !== card.id && c.to !== card.id);
+        refreshConnections();
+        updateCount();
+        drawMinimap();
+      }, 300);
+    });
+    posterDiv.appendChild(removeBtn);
+    posterWrap.appendChild(posterDiv);
+    el.appendChild(posterWrap);
+
+    // Info section
+    const info = document.createElement("div");
+    info.className = "card-info";
+    info.innerHTML = `
+      <div class="card-title">${card.title}</div>
+      ${card.year ? `<div class="card-year">${card.year}</div>` : ""}
+      ${card.rating > 0 ? `<div class="card-rating">★ ${card.rating.toFixed(1)}</div>` : ""}
+      <div class="card-genres" id="genres-${card.id}"></div>
+    `;
+    el.appendChild(info);
+
+    // Drag
+    el.addEventListener("mousedown", e => {
+      if (e.button !== 0) return;
+      if (connMode) return; // don't drag in connection mode
+      e.stopPropagation();
+      const cp = s2c(e.clientX, e.clientY);
+      dragging = { id: card.id, el, startMx: cp.x, startMy: cp.y, startCx: card.x, startCy: card.y };
+      card.z = nextZ++;
+      el.style.zIndex = card.z;
+      el.classList.add("dragging");
+    });
+
+    // Connection mode click
+    el.addEventListener("click", e => {
+      if (!connMode) return;
+      e.stopPropagation();
+      if (!connFirst) {
+        connFirst = card.id;
+        el.classList.add("conn-selected");
+      } else if (connFirst !== card.id) {
+        showConnLabelPopup(e.clientX, e.clientY, connFirst, card.id);
+        connFirst = null;
+        document.querySelectorAll(".conn-selected").forEach(c => c.classList.remove("conn-selected"));
+      }
+    });
+
+    card.el = el;
+    cards.push(card);
+    canvasLayer.appendChild(el);
+    updateCount();
+
+    // Mark as placed after entrance animation
+    setTimeout(() => el.classList.add("placed"), 450);
+
+    // Fetch details & auto-connect
+    if (movie.id) {
+      const details = await fetchDetails(movie.id);
+      card.director = details.director;
+      card.cast = details.cast;
+      card.genres = details.genres;
+
+      // Render genre tags
+      const genresEl = $("genres-" + card.id);
+      if (genresEl && card.genres.length) {
+        genresEl.innerHTML = card.genres.slice(0, 3).map(g =>
+          `<span class="card-genre-tag">${g}</span>`
+        ).join("");
+      }
+
+      autoConnect(card);
+    }
+
+    drawMinimap();
+  }
+
+  // ═══ MANUAL CONNECTION LABEL POPUP ═══
+  function showConnLabelPopup(mx, my, fromId, toId) {
+    const popup = document.createElement("div");
+    popup.className = "conn-label-popup";
+    popup.style.left = mx + "px";
+    popup.style.top = my + "px";
+    popup.innerHTML = `
+      <input class="conn-label-input" placeholder="Label (optional)..." autofocus>
+      <button class="conn-label-btn">Link</button>
+    `;
+    const input = popup.querySelector("input");
+    const btn = popup.querySelector("button");
+
+    function finish() {
+      const label = input.value.trim();
+      addConnection(fromId, toId, "manual", label);
+      popup.remove();
+      drawMinimap();
+    }
+
+    input.addEventListener("keydown", e => {
+      if (e.key === "Enter") finish();
+      if (e.key === "Escape") popup.remove();
+    });
+    btn.addEventListener("click", finish);
+    setTimeout(() => input.focus(), 50);
+
+    document.body.appendChild(popup);
+  }
+
+  // ═══ SEARCH ═══
+  function openSearch(cx, cy) {
+    closeSearch();
+    const popup = document.createElement("div");
+    popup.className = "search-popup";
+    popup.style.left = cx + "px";
+    popup.style.top = cy + "px";
+    let timer = null;
+
+    popup.innerHTML = `
+      <div class="search-box">
+        <input class="search-input" placeholder="Search a movie..." autofocus>
+        <div class="search-divider"></div>
+        <div class="search-results"></div>
+        <div class="search-hint">Type a movie name — results appear live</div>
+      </div>
+    `;
+
+    const input = popup.querySelector(".search-input");
+    const results = popup.querySelector(".search-results");
+    const hint = popup.querySelector(".search-hint");
+
+    popup.addEventListener("mousedown", e => e.stopPropagation());
+    popup.addEventListener("dblclick", e => e.stopPropagation());
+
+    input.addEventListener("keydown", e => { if (e.key === "Escape") closeSearch(); });
+    input.addEventListener("input", () => {
+      clearTimeout(timer);
+      const q = input.value.trim();
+      if (!q) { results.innerHTML = ""; hint.style.display = "block"; return; }
+      hint.style.display = "none";
+      timer = setTimeout(() => searchMovies(q, results, cx, cy), 300);
+    });
+
+    canvasLayer.appendChild(popup);
+    activeSearch = popup;
+    setTimeout(() => input.focus(), 60);
+  }
+
+  function closeSearch() { if (activeSearch) { activeSearch.remove(); activeSearch = null; } }
+
+  async function searchMovies(query, container, cx, cy) {
+    container.innerHTML = '<div class="search-loading">Searching...</div>';
+    try {
+      const res = await fetch(`${TMDB}/search/movie?api_key=${apiKey}&query=${encodeURIComponent(query)}&page=1`);
+      const data = await res.json();
+      if (data.status_code) {
+        container.innerHTML = `<div class="search-error">${data.status_message || "Check API key"}</div>`;
+        return;
+      }
+      const movies = (data.results || []).slice(0, 8);
+      if (!movies.length) { container.innerHTML = '<div class="search-loading">No results found</div>'; return; }
+
+      container.innerHTML = "";
+      movies.forEach(movie => {
+        const row = document.createElement("div");
+        row.className = "search-result";
+        const thumb = movie.poster_path
+          ? `<img src="${IMG}/w92${movie.poster_path}" alt="">` : `<div class="no-img">—</div>`;
+        const year = (movie.release_date || "").slice(0, 4) || "—";
+        const star = movie.vote_average > 0 ? `<span class="star">★ ${movie.vote_average.toFixed(1)}</span>` : "";
+        const overview = movie.overview ? `<div class="result-overview">${movie.overview}</div>` : "";
+
+        row.innerHTML = `
+          <div class="result-thumb">${thumb}</div>
+          <div class="result-info">
+            <div class="result-title">${movie.title}</div>
+            <div class="result-meta">${year}${star}</div>
+            ${overview}
+          </div>
+        `;
+        row.addEventListener("click", () => { createCard(movie, cx, cy); closeSearch(); });
+        container.appendChild(row);
+      });
+    } catch { container.innerHTML = `<div class="search-error">Network error</div>`; }
+  }
+
+  // ═══ MINIMAP ═══
+  function drawMinimap() {
+    const W = 360, H = 240;
+    const ctx = minimapCtx;
+    ctx.clearRect(0, 0, W, H);
+
+    if (!cards.length) { minimap.classList.add("hidden"); return; }
+    minimap.classList.remove("hidden");
+
+    // Find bounds
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    cards.forEach(c => {
+      if (c.x < minX) minX = c.x;
+      if (c.x + 160 > maxX) maxX = c.x + 160;
+      if (c.y < minY) minY = c.y;
+      if (c.y + 300 > maxY) maxY = c.y + 300;
+    });
+
+    const pad = 200;
+    minX -= pad; minY -= pad; maxX += pad; maxY += pad;
+    const rangeX = maxX - minX || 1, rangeY = maxY - minY || 1;
+    const scale = Math.min(W / rangeX, H / rangeY);
+
+    const ox = (W - rangeX * scale) / 2;
+    const oy = (H - rangeY * scale) / 2;
+
+    // Draw connections
+    connections.forEach(conn => {
+      const from = cards.find(c => c.id === conn.from);
+      const to = cards.find(c => c.id === conn.to);
+      if (!from || !to) return;
+      const a = cardCenter(from), b = cardCenter(to);
+      ctx.beginPath();
+      ctx.moveTo(ox + (a.x - minX) * scale, oy + (a.y - minY) * scale);
+      ctx.lineTo(ox + (b.x - minX) * scale, oy + (b.y - minY) * scale);
+      ctx.strokeStyle = conn.color + "44";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    });
+
+    // Draw cards as dots
+    cards.forEach(c => {
+      const cx = ox + (c.x + 80 - minX) * scale;
+      const cy = oy + (c.y + 120 - minY) * scale;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+      ctx.fillStyle = "#7b6ff0";
+      ctx.fill();
+      // Glow
+      ctx.beginPath();
+      ctx.arc(cx, cy, 7, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(123,111,240,0.15)";
+      ctx.fill();
+    });
+
+    // Viewport rectangle
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const vLeft = -panX / zoom, vTop = -panY / zoom;
+    const vRight = vLeft + vw / zoom, vBottom = vTop + vh / zoom;
+
+    const rx = ox + (vLeft - minX) * scale;
+    const ry = oy + (vTop - minY) * scale;
+    const rw = (vRight - vLeft) * scale;
+    const rh = (vBottom - vTop) * scale;
+
+    ctx.strokeStyle = "rgba(255,255,255,0.15)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(rx, ry, rw, rh);
+  }
+
+  // Minimap click to navigate
+  minimap.addEventListener("click", e => {
+    if (!cards.length) return;
+    const rect = minimap.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) / rect.width * 360;
+    const my = (e.clientY - rect.top) / rect.height * 240;
+
+    let minX = Infinity, maxX = -Infinity, minY2 = Infinity, maxY = -Infinity;
+    cards.forEach(c => {
+      if (c.x < minX) minX = c.x; if (c.x + 160 > maxX) maxX = c.x + 160;
+      if (c.y < minY2) minY2 = c.y; if (c.y + 300 > maxY) maxY = c.y + 300;
+    });
+    const pad = 200;
+    minX -= pad; minY2 -= pad; maxX += pad; maxY += pad;
+    const rangeX = maxX - minX || 1, rangeY = maxY - minY2 || 1;
+    const scale = Math.min(360 / rangeX, 240 / rangeY);
+    const ox = (360 - rangeX * scale) / 2, oy = (240 - rangeY * scale) / 2;
+
+    const canvasX = (mx - ox) / scale + minX;
+    const canvasY = (my - oy) / scale + minY2;
+
+    panX = window.innerWidth / 2 - canvasX * zoom;
+    panY = window.innerHeight / 2 - canvasY * zoom;
+    updateTransform();
+    drawMinimap();
+  });
+
+  // ═══ CANVAS EVENTS ═══
+  canvasRoot.addEventListener("dblclick", e => {
+    if (e.target.closest(".movie-card") || e.target.closest(".search-popup")) return;
+    const pos = s2c(e.clientX, e.clientY);
+    openSearch(pos.x, pos.y);
+  });
+
+  canvasRoot.addEventListener("click", e => {
+    if (activeSearch && !e.target.closest(".search-popup")) closeSearch();
+  });
+
+  canvasRoot.addEventListener("mousedown", e => {
+    if (e.target.closest(".search-popup") || e.target.closest(".movie-card")) return;
+    if (e.shiftKey || e.button === 1) {
+      e.preventDefault();
+      panning = true; panSMx = e.clientX; panSMy = e.clientY; panSPx = panX; panSPy = panY;
+      canvasRoot.style.cursor = "grabbing";
+    }
+  });
+
+  window.addEventListener("mousemove", e => {
+    if (dragging) {
+      const cp = s2c(e.clientX, e.clientY);
+      const card = cards.find(c => c.id === dragging.id);
+      if (card) {
+        card.x = dragging.startCx + (cp.x - dragging.startMx);
+        card.y = dragging.startCy + (cp.y - dragging.startMy);
+        dragging.el.style.left = card.x + "px";
+        dragging.el.style.top = card.y + "px";
+        refreshConnections();
+        drawMinimap();
+      }
+      return;
+    }
+    if (panning) {
+      panX = panSPx + (e.clientX - panSMx);
+      panY = panSPy + (e.clientY - panSMy);
+      updateTransform();
+      drawMinimap();
+    }
+  });
+
+  window.addEventListener("mouseup", () => {
+    if (dragging) { dragging.el.classList.remove("dragging"); dragging = null; }
+    if (panning) { panning = false; canvasRoot.style.cursor = "crosshair"; }
+  });
+
+  canvasRoot.addEventListener("wheel", e => {
+    e.preventDefault();
+    const f = e.deltaY > 0 ? 0.92 : 1.08;
+    const nz = Math.max(0.08, Math.min(6, zoom * f));
+    const cx = e.clientX, cy = e.clientY;
+    panX = cx - (cx - panX) * (nz / zoom);
+    panY = cy - (cy - panY) * (nz / zoom);
+    zoom = nz;
+    updateTransform();
+    drawMinimap();
+  }, { passive: false });
+
+  canvasRoot.addEventListener("auxclick", e => { if (e.button === 1) e.preventDefault(); });
+
+  // ═══ CONNECTION MODE (hold C) ═══
+  window.addEventListener("keydown", e => {
+    if (e.key === "c" || e.key === "C") {
+      if (e.target.tagName === "INPUT") return;
+      if (!connMode) {
+        connMode = true;
+        connModeEl.classList.add("active");
+        document.querySelectorAll(".movie-card").forEach(c => c.classList.add("conn-target"));
+        canvasRoot.style.cursor = "pointer";
+      }
+    }
+  });
+
+  window.addEventListener("keyup", e => {
+    if (e.key === "c" || e.key === "C") {
+      connMode = false;
+      connFirst = null;
+      connModeEl.classList.remove("active");
+      document.querySelectorAll(".movie-card").forEach(c => {
+        c.classList.remove("conn-target");
+        c.classList.remove("conn-selected");
+      });
+      canvasRoot.style.cursor = "crosshair";
+    }
+  });
+
+  // ═══ INIT ═══
+  updateTransform();
+  updateCount();
+})();
+</script>
+</body>
+</html>
